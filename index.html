@@ -1271,8 +1271,7 @@ function supplyLinesHtml(count) {
 function printSupplyPlan() {
   syncSupplyFromCurrent(false);
   const s = getSupplyState();
-  const rulesLines = (s['supply-rules'] || '').split(/
-+/).map(v => v.trim()).filter(Boolean);
+  const rulesLines = (s['supply-rules'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
   const noteHtml = escapeHtml(s['supply-note'] || '');
   const doc = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Planification suppléance</title><style>
     @page { size: Letter; margin: 0.55in; }
