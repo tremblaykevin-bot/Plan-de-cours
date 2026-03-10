@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Générateur de plan de cours Classroom — Cardinal-Roy</title>
+<title>Générateur de plan de cours Classroom - Cardinal-Roy</title>
+<link rel="icon" href="favicon.ico" type="image/x-icon">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -646,7 +647,10 @@
       </div>
     </div>
 
-    <button class="btn-generate" onclick="generer()">Générer le plan de cours</button>
+    <div style="display:flex; gap:10px; margin-top:18px;">
+      <button class="btn-generate" onclick="generer()" style="margin-top:0; flex:1;">Générer le plan de cours</button>
+      <button type="button" class="btn-reset" onclick="effacerFormulaire()" style="display:inline-flex; margin-top:0;">Effacer</button>
+    </div>
   </div>
 
   <!-- PREVIEW -->
@@ -892,6 +896,7 @@ function dpPickYear(y) {
 function dpPickDay(d) {
   dpDate.setDate(d);
   document.getElementById('date-cours').value = formatDateStr(dpDate);
+  sauvegarderPlanLocal();
   closePicker();
 }
 
@@ -949,11 +954,13 @@ function ajouterActivite(prefillHtml = '') {
   brancherDragActivite(row);
   brancherAutocompleteActivite(row);
   reindexActivites();
+  sauvegarderPlanLocal();
 }
 
 function supprimerActivite(btn) {
   btn.closest('.activity-row').remove();
   reindexActivites();
+  sauvegarderPlanLocal();
 }
 
 function reindexActivites() {
@@ -1010,6 +1017,7 @@ function toggleSansNumero() {
   } else {
     initNumCours();
   }
+  sauvegarderPlanLocal();
 }
 
 function toggleDevoir() {
@@ -1023,6 +1031,7 @@ function toggleDevoir() {
     ed.removeAttribute('disabled-editor');
     ed.contentEditable = 'true';
   }
+  sauvegarderPlanLocal();
 }
 
 function toggleRappel() {
@@ -1036,6 +1045,7 @@ function toggleRappel() {
     ed.removeAttribute('disabled-editor');
     ed.contentEditable = 'true';
   }
+  sauvegarderPlanLocal();
 }
 
 function getEmojis() {
@@ -1066,6 +1076,114 @@ function initNumCours() {
 
 function saveNumCours(num) {
   localStorage.setItem('cardinal_last_num', num);
+}
+
+
+const PLAN_STORAGE_KEY = 'cardinal_plan_cours_form_state_v1';
+let suspendPlanSave = false;
+
+function collecterEtatPlan() {
+  return {
+    dateCours: formatDateStr(dpDate),
+    sansNumero: document.getElementById('sans-numero').checked,
+    numCours: document.getElementById('num-cours').value,
+    avecEmojis: document.getElementById('avec-emojis').checked,
+    activites: [...document.querySelectorAll('.activity-row .rich-editor')].map(ed => ed.innerHTML),
+    devoirHtml: document.getElementById('devoir').innerHTML,
+    pasDevoir: document.getElementById('pas-devoir').checked,
+    rappelHtml: document.getElementById('rappel').innerHTML,
+    pasRappel: document.getElementById('pas-rappel').checked
+  };
+}
+
+function sauvegarderPlanLocal() {
+  if (suspendPlanSave) return;
+  try {
+    localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(collecterEtatPlan()));
+  } catch (e) {
+    console.warn('Impossible de sauvegarder le plan localement.', e);
+  }
+}
+
+function chargerPlanLocal() {
+  const raw = localStorage.getItem(PLAN_STORAGE_KEY);
+  if (!raw) return;
+
+  try {
+    const state = JSON.parse(raw);
+    suspendPlanSave = true;
+
+    if (state.dateCours) {
+      const parts = String(state.dateCours).split('-');
+      if (parts.length === 3) {
+        const [y, m, d] = parts.map(Number);
+        dpDate = new Date(y, m - 1, d);
+      }
+    }
+    document.getElementById('date-cours').value = formatDateStr(dpDate);
+
+    document.getElementById('sans-numero').checked = !!state.sansNumero;
+    document.getElementById('num-cours').value = state.numCours || '';
+    document.getElementById('avec-emojis').checked = state.avecEmojis !== false;
+    toggleSansNumero();
+    if (!state.sansNumero && state.numCours) {
+      document.getElementById('num-cours').value = state.numCours;
+    }
+
+    document.querySelectorAll('.activity-row').forEach(r => r.remove());
+    const activites = Array.isArray(state.activites) && state.activites.length ? state.activites : ['', '', ''];
+    activites.slice(0, 10).forEach(html => ajouterActivite(html || ''));
+
+    document.getElementById('devoir').innerHTML = state.devoirHtml || '';
+    document.getElementById('pas-devoir').checked = !!state.pasDevoir;
+    toggleDevoir();
+    if (!state.pasDevoir) document.getElementById('devoir').innerHTML = state.devoirHtml || '';
+
+    document.getElementById('rappel').innerHTML = state.rappelHtml || '';
+    document.getElementById('pas-rappel').checked = !!state.pasRappel;
+    toggleRappel();
+    if (!state.pasRappel) document.getElementById('rappel').innerHTML = state.rappelHtml || '';
+  } catch (e) {
+    console.warn('Impossible de restaurer le plan local.', e);
+  } finally {
+    suspendPlanSave = false;
+  }
+}
+
+function effacerFormulaire() {
+  suspendPlanSave = true;
+  localStorage.removeItem(PLAN_STORAGE_KEY);
+  latestGeneratedText = '';
+  latestGeneratedHtml = '';
+  clipboardHTML = '';
+  dpDate = new Date();
+  document.getElementById('date-cours').value = formatDateStr(dpDate);
+  document.getElementById('sans-numero').checked = false;
+  document.getElementById('num-cours').disabled = false;
+  document.getElementById('avec-emojis').checked = true;
+  initNumCours();
+  document.querySelectorAll('.activity-row').forEach(r => r.remove());
+  initActivites();
+  document.getElementById('devoir').innerHTML = '';
+  document.getElementById('devoir').contentEditable = 'true';
+  document.getElementById('devoir').removeAttribute('disabled-editor');
+  document.getElementById('pas-devoir').checked = false;
+  document.getElementById('rappel').innerHTML = '';
+  document.getElementById('rappel').contentEditable = 'true';
+  document.getElementById('rappel').removeAttribute('disabled-editor');
+  document.getElementById('pas-rappel').checked = false;
+  suspendPlanSave = false;
+  document.getElementById('plan-preview').innerHTML = `
+    <div class="empty-state">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <line x1="3" y1="9" x2="21" y2="9"/>
+        <line x1="9" y1="21" x2="9" y2="9"/>
+      </svg>
+      <p>Remplissez le formulaire<br>et cliquez sur <em>Générer</em></p>
+    </div>`;
+  document.getElementById('btn-copy').style.display = 'none';
+  document.getElementById('btn-reset').style.display = 'none';
 }
 
 async function generer() {
@@ -1287,6 +1405,35 @@ function insertBankActivityByText(text) {
   const html = entry?.html || escapeHtml(text);
   if (empty) empty.innerHTML = html; else ajouterActivite(html);
 }
+
+function placeCaretAt(editor, toEnd = false) {
+  if (!editor) return;
+  editor.focus();
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(!toEnd);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function focusAdjacentActivity(currentEditor, direction = 'next', createIfMissing = false) {
+  const rows = [...document.querySelectorAll('.activity-row')];
+  const currentRow = currentEditor.closest('.activity-row');
+  const currentIndex = rows.indexOf(currentRow);
+  if (currentIndex === -1) return;
+
+  let targetRow = direction === 'next' ? rows[currentIndex + 1] : rows[currentIndex - 1];
+
+  if (!targetRow && direction === 'next' && createIfMissing && rows.length < 10) {
+    ajouterActivite();
+    targetRow = [...document.querySelectorAll('.activity-row')][currentIndex + 1];
+  }
+
+  const targetEditor = targetRow?.querySelector('.rich-editor');
+  if (targetEditor) placeCaretAt(targetEditor, direction !== 'next');
+}
+
 function brancherAutocompleteActivite(row) {
   const editor = row.querySelector('.rich-editor'); const menu = row.querySelector('.autocomplete-menu'); let activeIndex = -1;
   function closeMenu() { menu.style.display = 'none'; menu.innerHTML = ''; activeIndex = -1; }
@@ -1300,12 +1447,44 @@ function brancherAutocompleteActivite(row) {
   editor.addEventListener('input', () => openMenu(currentMatches()));
   editor.addEventListener('focus', () => openMenu(currentMatches()));
   editor.addEventListener('keydown', (e) => {
-    const items = [...menu.querySelectorAll('.autocomplete-item')]; if (!items.length || menu.style.display === 'none') return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = (activeIndex + 1) % items.length; }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = (activeIndex - 1 + items.length) % items.length; }
-    else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); items[activeIndex].dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return; }
-    else if (e.key === 'Escape') { closeMenu(); return; } else return;
-    items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+    const items = [...menu.querySelectorAll('.autocomplete-item')];
+    const menuOpen = items.length && menu.style.display !== 'none';
+
+    if (menuOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = (activeIndex + 1) % items.length;
+        items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = (activeIndex - 1 + items.length) % items.length;
+        items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+        return;
+      }
+      if (e.key === 'Enter' && activeIndex >= 0) {
+        e.preventDefault();
+        items[activeIndex].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        return;
+      }
+      if (e.key === 'Escape') {
+        closeMenu();
+        return;
+      }
+    }
+
+    if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'ArrowDown') {
+      e.preventDefault();
+      focusAdjacentActivity(editor, 'next', true);
+      return;
+    }
+
+    if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+      e.preventDefault();
+      focusAdjacentActivity(editor, 'prev', false);
+      return;
+    }
   });
   document.addEventListener('mousedown', (e) => { if (!row.contains(e.target)) closeMenu(); });
 }
@@ -1438,24 +1617,30 @@ function hideToolbar() {
   toolbar.style.display = 'none';
 }
 
-document.addEventListener('selectionchange', function() {
+function updateToolbarFromSelection() {
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.toString().trim() === '') {
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed || sel.toString().trim() === '') {
     hideToolbar();
     return;
   }
-  // Check if selection is inside a rich-editor
   const anchor = sel.anchorNode;
+  if (!anchor) { hideToolbar(); return; }
   const el = anchor.nodeType === 3 ? anchor.parentElement : anchor;
-  if (!el.closest('.rich-editor')) { hideToolbar(); return; }
+  if (!el || !el.closest('.rich-editor')) { hideToolbar(); return; }
 
   saveRange();
   const rect = sel.getRangeAt(0).getBoundingClientRect();
-  // Wait for toolbar to be visible to measure height
+  if (!rect || (!rect.width && !rect.height)) { hideToolbar(); return; }
   toolbar.style.display = 'flex';
   const top = rect.top + window.scrollY - toolbar.offsetHeight - 8;
-  toolbar.style.top  = Math.max(4, top) + 'px';
+  toolbar.style.top = Math.max(4, top) + 'px';
   toolbar.style.left = (rect.left + rect.width / 2 + window.scrollX) + 'px';
+}
+
+document.addEventListener('selectionchange', updateToolbarFromSelection);
+document.querySelectorAll('.rich-editor').forEach(ed => {
+  ed.addEventListener('mouseup', () => setTimeout(updateToolbarFromSelection, 0));
+  ed.addEventListener('keyup', () => setTimeout(updateToolbarFromSelection, 0));
 });
 
 // Hide toolbar on click outside rich editors
@@ -1505,6 +1690,7 @@ function afficherCopie() {
 }
 
 function reinitialiser() {
+  localStorage.removeItem(PLAN_STORAGE_KEY);
   latestGeneratedText = "";
   latestGeneratedHtml = "";
   dpDate = new Date();
@@ -1542,6 +1728,18 @@ if (classroomSelectEl) classroomSelectEl.addEventListener('change', () => { cons
 
 initDate();
 initActivites();
+chargerPlanLocal();
+
+document.getElementById('num-cours').addEventListener('input', sauvegarderPlanLocal);
+document.getElementById('avec-emojis').addEventListener('change', sauvegarderPlanLocal);
+document.getElementById('sans-numero').addEventListener('change', sauvegarderPlanLocal);
+document.getElementById('devoir').addEventListener('input', sauvegarderPlanLocal);
+document.getElementById('rappel').addEventListener('input', sauvegarderPlanLocal);
+document.getElementById('date-cours').addEventListener('change', sauvegarderPlanLocal);
+document.addEventListener('input', function(e) {
+  if (e.target.closest('.activity-row .rich-editor')) sauvegarderPlanLocal();
+});
+
 refreshGoogleUi();
 renderBankList();
 if (googleAccessToken) { afterGoogleLogin().catch(err => { console.error(err); setStatus('google-status', 'Session expirée. Reconnectez-vous à Google.', 'err'); }); }
