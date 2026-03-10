@@ -102,11 +102,16 @@
   select { appearance: none; }
   #reuse-course-box { margin-top: 10px; }
 
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .row2 .field-group { display: flex; flex-direction: column; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .row2 .field-group { display: flex; flex-direction: column; margin-top: 0 !important; }
   .row2 .field-group > input,
-  .row2 .field-group .date-input-wrapper { height: 42px; }
+  .row2 .field-group .date-input-wrapper {
+    height: 42px;
+    min-height: 42px;
+    max-height: 42px;
+  }
   .row2 .field-group > input { box-sizing: border-box; }
+  .row2 .hint { margin-top: 8px; }
 
   /* Date input wrapper */
   .date-input-wrapper {
@@ -627,6 +632,14 @@
       </div>
     </div>
 
+    <!-- Options titre -->
+    <div class="field-group" style="margin-top:14px;">
+      <div class="checkbox-row">
+        <input type="checkbox" id="avec-emojis" checked>
+        <span onclick="document.getElementById('avec-emojis').click()">Inclure des emojis dans le titre</span>
+      </div>
+    </div>
+
     <div class="field-group" style="margin-top:14px;">
       <div class="checkbox-row">
         <input type="checkbox" id="enable-reuse-course" onchange="toggleReuseCourse()">
@@ -636,14 +649,6 @@
         <label for="reuse-course-select">Cours enregistrés</label>
         <select id="reuse-course-select"><option value="">Choisir un cours</option></select>
         <p class="hint">Choisissez un cours déjà généré pour remplir automatiquement les champs.</p>
-      </div>
-    </div>
-
-    <!-- Options titre -->
-    <div class="field-group" style="margin-top:14px;">
-      <div class="checkbox-row">
-        <input type="checkbox" id="avec-emojis" checked>
-        <span onclick="document.getElementById('avec-emojis').click()">Inclure des emojis dans le titre</span>
       </div>
     </div>
 
@@ -751,6 +756,10 @@
           <div class="field-group"><label for="supply-replacement">Suppléant(e)</label><input id="supply-replacement" type="text" placeholder=""></div>
           <div class="field-group"><label for="supply-level">Niveau</label><input id="supply-level" type="text" value="3"></div>
           <div class="field-group supply-wide">
+            <label for="supply-absent">Élève(s) absent(s)</label>
+            <textarea id="supply-absent" class="supply-textarea small" placeholder="Une ligne par élève"></textarea>
+          </div>
+          <div class="field-group supply-wide">
             <label for="supply-work">Travail à faire</label>
             <textarea id="supply-work" class="supply-textarea" placeholder="Le travail du cours sera généré automatiquement ici."></textarea>
           </div>
@@ -763,9 +772,23 @@
             <label for="supply-note">Note particulière</label>
             <textarea id="supply-note" class="supply-textarea small" placeholder="Consigne ou note importante pour la suppléance"></textarea>
           </div>
+          <div class="field-group supply-wide">
+            <label for="supply-comments">Commentaires sur la période</label>
+            <textarea id="supply-comments" class="supply-textarea small" placeholder="Laissez des lignes vides pour l'impression ou tapez un commentaire."></textarea>
+          </div>
+          <div class="field-group">
+            <label for="supply-rating">Période en général</label>
+            <select id="supply-rating">
+              <option value="">Choisir</option>
+              <option>Excellente période</option>
+              <option>Bonne période</option>
+              <option>Période moyenne</option>
+              <option>Mauvaise période</option>
+            </select>
+          </div>
           <div class="field-group"><label for="supply-return">Laisser le rapport</label><input id="supply-return" type="text" placeholder="au local / au pigeonnier / au bureau"></div>
         </div>
-        <div class="supply-help">Le travail à faire est rempli à partir des activités, du devoir et du rappel actuels. Les lignes Élève(s) absent(s), Commentaires sur la période et Période en général apparaissent seulement à l'impression.</div>
+        
         <div class="supply-actions">
           <button class="btn-secondary-soft" type="button" onclick="syncSupplyFromCourse(true)">Actualiser depuis le cours</button>
           <button class="btn-print-supply" type="button" onclick="printSupplyPlan()">Imprimer la planification de suppléance</button>
@@ -1231,6 +1254,11 @@ async function generer() {
   latestGeneratedText = buildCurrentPlanTextForClassroom();
   document.getElementById('btn-copy').style.display = 'flex';
   document.getElementById('btn-reset').style.display = 'flex';
+  switchRightTab('preview');
+
+  if (googleAccessToken && appSpreadsheetId) {
+    try { await saveCurrentCourseToBank(); } catch (e) { console.warn(e); }
+  }
 
   if (googleAccessToken && appSpreadsheetId && bankEntries.length) {
     const dedup = [];
@@ -1513,19 +1541,24 @@ function renderBankList() {
 function insertBankActivityByText(text) {
   const entry = bankActivities.find(a => a.text === text);
   const html = entry?.html || escapeHtml(text);
-  const current = activeActivityEditor && document.body.contains(activeActivityEditor) ? activeActivityEditor : null;
   const empty = [...document.querySelectorAll('.activity-row .rich-editor')].find(ed => !ed.innerText.trim());
-  const target = current || empty;
+  const current = activeActivityEditor && document.body.contains(activeActivityEditor) ? activeActivityEditor : null;
+  const target = empty || current;
   if (target) {
     target.innerHTML = html;
     target.focus();
     activeActivityEditor = target;
     sauvegarderPlanLocal();
+    switchRightTab('preview');
     return;
   }
   ajouterActivite(html);
   const last = [...document.querySelectorAll('.activity-row .rich-editor')].pop();
-  if (last) { last.focus(); activeActivityEditor = last; }
+  if (last) {
+    last.focus();
+    activeActivityEditor = last;
+    switchRightTab('preview');
+  }
 }
 function brancherAutocompleteActivite(row) {
   const editor = row.querySelector('.rich-editor'); const menu = row.querySelector('.autocomplete-menu'); let activeIndex = -1;
@@ -1783,6 +1816,9 @@ function appendSupplyRule(rule) {
   ta.value = lines.join('\n');
   sauvegarderSupplyLocal();
 }
+function defaultSupplyRulesText() {
+  return SUPPLY_RULES_DEFAULT.slice(0,3).join('\n');
+}
 function buildSupplyWorkTextFromCourse() {
   const parts = [];
   const activities = [...document.querySelectorAll('.activity-row .rich-editor')].map(ed => htmlVersTexteClassroom(ed.innerHTML).trim()).filter(Boolean);
@@ -1813,11 +1849,10 @@ function syncSupplyFromCourse(forceWork) {
   if (subjectEl && !subjectEl.value.trim()) subjectEl.value = 'Français';
   const levelEl = document.getElementById('supply-level');
   if (levelEl && !levelEl.value.trim()) levelEl.value = '3';
-  const rulesEl = document.getElementById('supply-rules');
-    sauvegarderSupplyLocal();
+  sauvegarderSupplyLocal();
 }
 function getSupplyState() {
-  const ids = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-work','supply-rules','supply-note','supply-return'];
+  const ids = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-absent','supply-work','supply-rules','supply-note','supply-comments','supply-rating','supply-return'];
   const out = {};
   ids.forEach(id => out[id] = document.getElementById(id)?.value || '');
   return out;
@@ -1844,12 +1879,12 @@ function supplyLinesHtml(count, filledLines) {
 function printSupplyPlan() {
   syncSupplyFromCourse(false);
   const s = getSupplyState();
-  const absentLines = [];
+  const absentLines = (s['supply-absent'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
   const workLines = (s['supply-work'] || '').split(/\n/).map(v => v.replace(/\s+$/,'')).filter((v, i, arr) => v || i < arr.length - 1);
   const rulesLines = (s['supply-rules'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
-  const commentLines = [];
+  const commentLines = (s['supply-comments'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
   const ratings = ['Excellente période','Bonne période','Période moyenne','Mauvaise période'];
-  const ratingHtml = ratings.map(r => `<div class="rating-row"><span class="box">☐</span><span>${escapeHtml(r)}</span></div>`).join('');
+  const ratingHtml = ratings.map(r => `<div class="rating-row"><span class="box">${s['supply-rating'] === r ? '☒' : '☐'}</span><span>${escapeHtml(r)}</span></div>`).join('');
   const workHtml = workLines.map(v => `<div class="work-line">${escapeHtml(v || ' ')}</div>`).join('');
   const noteHtml = escapeHtml(s['supply-note'] || '');
   const doc = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Planification suppléance</title><style>
@@ -1948,8 +1983,8 @@ const toolbar = document.getElementById('format-toolbar');
 
 function showToolbar(rect) {
   toolbar.style.display = 'flex';
-  const top = rect.top + window.scrollY - toolbar.offsetHeight - 8;
-  const left = rect.left + rect.width / 2 + window.scrollX;
+  const top = rect.top - toolbar.offsetHeight - 8;
+  const left = rect.left + rect.width / 2;
   toolbar.style.top  = Math.max(4, top) + 'px';
   toolbar.style.left = left + 'px';
 }
@@ -1971,11 +2006,10 @@ document.addEventListener('selectionchange', function() {
 
   saveRange();
   const rect = sel.getRangeAt(0).getBoundingClientRect();
-  // Wait for toolbar to be visible to measure height
   toolbar.style.display = 'flex';
-  const top = rect.top + window.scrollY - toolbar.offsetHeight - 8;
+  const top = rect.top - toolbar.offsetHeight - 8;
   toolbar.style.top  = Math.max(4, top) + 'px';
-  toolbar.style.left = (rect.left + rect.width / 2 + window.scrollX) + 'px';
+  toolbar.style.left = (rect.left + rect.width / 2) + 'px';
 });
 
 // Hide toolbar on click outside rich editors
