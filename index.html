@@ -1211,9 +1211,7 @@ function buildSupplyWorkFromCurrent() {
   document.querySelectorAll('.activity-row .rich-editor').forEach((ed, idx) => {
     const t = (ed.innerText || '').trim();
     if (!t) return;
-    parts.push((NUMERO_EMOJIS[idx] || (idx + 1) + '.') + ' ' + t.replace(/
-+/g, '
-   '));
+    parts.push((NUMERO_EMOJIS[idx] || (idx + 1) + '.') + ' ' + t.replace(/\n+/g, '\n   '));
   });
   const pasDevoir = document.getElementById('pas-devoir').checked;
   const devoir = (document.getElementById('devoir').innerText || '').trim();
@@ -1222,9 +1220,7 @@ function buildSupplyWorkFromCurrent() {
   if (pasDevoir) parts.push('Devoir : Aucun devoir');
   else if (devoir) parts.push('Devoir : ' + devoir);
   if (!pasRappel && rappel) parts.push('Rappel : ' + rappel);
-  return parts.join('
-
-').trim();
+  return parts.join('\n\n').trim();
 }
 
 function getSupplyState() {
