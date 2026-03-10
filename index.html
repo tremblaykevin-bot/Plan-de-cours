@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Générateur de plan de cours Classroom — Cardinal-Roy</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -84,7 +85,7 @@
     margin-bottom: 6px;
   }
 
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], select {
     width: 100%;
     padding: 10px 14px;
     border: 1.5px solid var(--border);
@@ -96,8 +97,10 @@
     transition: border-color 0.2s;
     outline: none;
   }
-  input:focus { border-color: var(--red); }
+  input:focus, select:focus { border-color: var(--red); }
   input::placeholder { color: #bbb; }
+  select { appearance: none; }
+  #reuse-course-box { margin-top: 10px; }
 
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .row2 .field-group { display: flex; flex-direction: column; }
@@ -560,19 +563,17 @@
   .auth-pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; background:#f7f4f1; border-radius:999px; font-size:.8rem; color:#5d534b; }
 
 
-  /* Planification suppléance */
   .supply-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .supply-grid .field-group { margin-top:0; }
   .supply-wide { grid-column:1 / -1; }
-  .supply-textarea { width:100%; min-height:96px; border:1px solid #ddd6cf; border-radius:10px; padding:10px 12px; font:400 0.92rem 'DM Sans',sans-serif; color:#2d2d2d; resize:vertical; background:#fff; box-sizing:border-box; }
+  .supply-textarea { width:100%; min-height:96px; border:1px solid #ddd6cf; border-radius:10px; padding:10px 12px; font:400 0.92rem 'DM Sans',sans-serif; color:#2d2d2d; resize:vertical; background:#fff; }
   .supply-textarea.small { min-height:72px; }
+  .supply-rules-bank { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .rule-chip { border:1px solid #d8cfc7; background:#faf7f3; color:#6f5d4f; border-radius:999px; padding:7px 10px; font:500 0.8rem 'DM Sans',sans-serif; cursor:pointer; }
+  .rule-chip:hover { background:#f4ede6; }
   .supply-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
-  .btn-print-supply, .btn-fill-supply { border:none; border-radius:10px; padding:11px 14px; color:#fff; font:600 0.92rem 'DM Sans',sans-serif; cursor:pointer; }
-  .btn-print-supply { background:#7c1f24; }
+  .btn-print-supply { border:none; border-radius:10px; padding:11px 14px; background:#7c1f24; color:#fff; font:600 0.92rem 'DM Sans',sans-serif; cursor:pointer; }
   .btn-print-supply:hover { background:#681a1e; }
-  .btn-fill-supply { background:#4f443c; }
-  .btn-fill-supply:hover { background:#3f3731; }
-  .supply-help { font-size:.8rem; color:#7b6f66; margin-top:10px; }
 
 </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -623,6 +624,18 @@
         </div>
         <div id="date-picker-popup" class="date-picker-popup" style="display:none;"></div>
         <p class="hint">Cliquez pour choisir une date</p>
+      </div>
+    </div>
+
+    <div class="field-group" style="margin-top:14px;">
+      <div class="checkbox-row">
+        <input type="checkbox" id="enable-reuse-course" onchange="toggleReuseCourse()">
+        <span onclick="document.getElementById('enable-reuse-course').click()">Réutiliser un cours existant</span>
+      </div>
+      <div id="reuse-course-box" style="display:none;">
+        <label for="reuse-course-select">Cours enregistrés</label>
+        <select id="reuse-course-select"><option value="">Choisir un cours</option></select>
+        <p class="hint">Choisissez un cours déjà généré pour remplir automatiquement les champs.</p>
       </div>
     </div>
 
@@ -736,14 +749,15 @@
           <div class="field-group"><label for="supply-room">Local</label><input id="supply-room" type="text" placeholder="308"></div>
           <div class="field-group"><label for="supply-teacher">Enseignant absent</label><input id="supply-teacher" type="text" value="Kevin Tremblay"></div>
           <div class="field-group"><label for="supply-replacement">Suppléant(e)</label><input id="supply-replacement" type="text" placeholder=""></div>
-          <div class="field-group"><label for="supply-level">Niveau</label><input id="supply-level" type="text" value="3e secondaire"></div>
+          <div class="field-group"><label for="supply-level">Niveau</label><input id="supply-level" type="text" value="3"></div>
           <div class="field-group supply-wide">
             <label for="supply-work">Travail à faire</label>
             <textarea id="supply-work" class="supply-textarea" placeholder="Le travail du cours sera généré automatiquement ici."></textarea>
           </div>
           <div class="field-group supply-wide">
             <label for="supply-rules">Règles</label>
-            <textarea id="supply-rules" class="supply-textarea small" placeholder="Ajoutez seulement les règles que vous voulez faire apparaître."></textarea>
+            <textarea id="supply-rules" class="supply-textarea small" placeholder="Une règle par ligne"></textarea>
+            <div class="supply-rules-bank" id="supply-rules-bank"></div>
           </div>
           <div class="field-group supply-wide">
             <label for="supply-note">Note particulière</label>
@@ -751,13 +765,14 @@
           </div>
           <div class="field-group"><label for="supply-return">Laisser le rapport</label><input id="supply-return" type="text" placeholder="au local / au pigeonnier / au bureau"></div>
         </div>
-        <div class="supply-help">Les lignes Élève(s) absent(s), Commentaires sur la période et Période en général apparaissent seulement à l'impression.</div>
+        <div class="supply-help">Le travail à faire est rempli à partir des activités, du devoir et du rappel actuels. Les lignes Élève(s) absent(s), Commentaires sur la période et Période en général apparaissent seulement à l'impression.</div>
         <div class="supply-actions">
-          <button class="btn-fill-supply" type="button" onclick="syncSupplyFromCurrent(true)">Remplir à partir du cours</button>
+          <button class="btn-secondary-soft" type="button" onclick="syncSupplyFromCourse(true)">Actualiser depuis le cours</button>
           <button class="btn-print-supply" type="button" onclick="printSupplyPlan()">Imprimer la planification de suppléance</button>
         </div>
       </div>
     </div>
+
   </div>
 </main>
 
@@ -792,7 +807,7 @@ function switchRightTab(tab) {
   document.getElementById('right-tab-btn-preview').classList.toggle('active', isPreview);
   document.getElementById('right-tab-btn-bank').classList.toggle('active', isBank);
   document.getElementById('right-tab-btn-supply').classList.toggle('active', isSupply);
-  if (isSupply) syncSupplyFromCurrent(false);
+  if (isSupply) syncSupplyFromCourse(false);
 }
 
 const GOOGLE_CLIENT_ID = '1063815453063-ncrcg7ujl935e66r53rf4vhmebvrqch6.apps.googleusercontent.com';
@@ -800,15 +815,30 @@ const GOOGLE_SCOPES = ['openid','email','profile','https://www.googleapis.com/au
 const APP_SHEET_NAME = "Plan de cours Cardinal-Roy - Banque d'activités";
 const ACTIVITES_SHEET = 'Activites';
 const CONFIG_SHEET = 'Config';
+const COURSES_SHEET = 'Cours';
 const APP_MARKER = 'CARDINAL_ROY_PLAN_COURS_V1';
+const LOCAL_PLAN_KEY = 'cardinal_plan_form_state_v2';
 let googleTokenClient = null;
 let googleAccessToken = localStorage.getItem('g_access_token') || '';
 let googleUser = null;
 let appSpreadsheetId = localStorage.getItem('plan_cours_sheet_id') || '';
 let bankActivities = [];
+let savedCourses = [];
 let classroomCourses = [];
 let latestGeneratedText = '';
 let latestGeneratedHtml = '';
+let activeActivityEditor = null;
+const SUPPLY_RULES_DEFAULT = [
+  "Pas de sortie aux toilettes ou pour aller boire de l’eau",
+  "Pas d’appareils électroniques",
+  "Pas de travail en équipe",
+  "Travail en silence",
+  "Suivre les consignes affichées au tableau",
+  "Prendre les absences en début de période"
+];
+const SUPPLY_LOCAL_KEY = 'cardinal_supply_plan_state_v1';
+const SCHOOL_LOGO_DATA_URI = document.querySelector('header img')?.src || '';
+
 
 // ── Date picker state ──
 let dpDate = new Date();   // currently selected date
@@ -828,6 +858,7 @@ function initDate() {
 function shiftDay(delta) {
   dpDate.setDate(dpDate.getDate() + delta);
   document.getElementById('date-cours').value = formatDateStr(dpDate);
+  sauvegarderPlanLocal();
   if (dpOpen) renderCalendar();
 }
 
@@ -947,6 +978,7 @@ function dpPickYear(y) {
 function dpPickDay(d) {
   dpDate.setDate(d);
   document.getElementById('date-cours').value = formatDateStr(dpDate);
+  sauvegarderPlanLocal();
   closePicker();
 }
 
@@ -1000,15 +1032,19 @@ function ajouterActivite(prefillHtml = '') {
   `;
   const editor = row.querySelector('.rich-editor');
   if (prefillHtml) editor.innerHTML = prefillHtml;
+  editor.addEventListener('focus', () => { activeActivityEditor = editor; });
+  editor.addEventListener('click', () => { activeActivityEditor = editor; });
   list.appendChild(row);
   brancherDragActivite(row);
   brancherAutocompleteActivite(row);
   reindexActivites();
+  sauvegarderPlanLocal();
 }
 
 function supprimerActivite(btn) {
   btn.closest('.activity-row').remove();
   reindexActivites();
+  sauvegarderPlanLocal();
 }
 
 function reindexActivites() {
@@ -1204,129 +1240,6 @@ async function generer() {
   }
 }
 
-const SUPPLY_LOCAL_KEY = 'cardinal_supply_plan_state_v2';
-
-function buildSupplyWorkFromCurrent() {
-  const parts = [];
-  document.querySelectorAll('.activity-row .rich-editor').forEach((ed, idx) => {
-    const t = (ed.innerText || '').trim();
-    if (!t) return;
-    parts.push((NUMERO_EMOJIS[idx] || (idx + 1) + '.') + ' ' + t.replace(/\n+/g, '\n   '));
-  });
-  const pasDevoir = document.getElementById('pas-devoir').checked;
-  const devoir = (document.getElementById('devoir').innerText || '').trim();
-  const pasRappel = document.getElementById('pas-rappel').checked;
-  const rappel = (document.getElementById('rappel').innerText || '').trim();
-  if (pasDevoir) parts.push('Devoir : Aucun devoir');
-  else if (devoir) parts.push('Devoir : ' + devoir);
-  if (!pasRappel && rappel) parts.push('Rappel : ' + rappel);
-  return parts.join('\n\n').trim();
-}
-
-function getSupplyState() {
-  const ids = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-work','supply-rules','supply-note','supply-return'];
-  const out = {};
-  ids.forEach(id => { const el = document.getElementById(id); if (el) out[id] = el.value || ''; });
-  return out;
-}
-
-function saveSupplyState() {
-  try { localStorage.setItem(SUPPLY_LOCAL_KEY, JSON.stringify(getSupplyState())); } catch (e) { console.warn(e); }
-}
-
-function restoreSupplyState() {
-  try {
-    const raw = localStorage.getItem(SUPPLY_LOCAL_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    Object.entries(data || {}).forEach(([id, val]) => {
-      const el = document.getElementById(id);
-      if (el) el.value = val || '';
-    });
-  } catch (e) { console.warn(e); }
-}
-
-function bindSupplyAutosave() {
-  ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-work','supply-rules','supply-note','supply-return'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('input', saveSupplyState);
-    el.addEventListener('change', saveSupplyState);
-  });
-}
-
-function syncSupplyFromCurrent(forceWork) {
-  const dateEl = document.getElementById('supply-date');
-  if (dateEl && !dateEl.value) dateEl.value = document.getElementById('date-cours').value || formatDateStr(dpDate);
-  if (dateEl && forceWork) dateEl.value = document.getElementById('date-cours').value || formatDateStr(dpDate);
-  const workEl = document.getElementById('supply-work');
-  if (workEl && (forceWork || !workEl.value.trim())) workEl.value = buildSupplyWorkFromCurrent();
-  saveSupplyState();
-}
-
-function supplyLinesHtml(count) {
-  return Array.from({ length: count }, () => '<div class="line-row"></div>').join('');
-}
-
-function printSupplyPlan() {
-  syncSupplyFromCurrent(false);
-  const s = getSupplyState();
-  const rulesLines = (s['supply-rules'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
-  const noteHtml = escapeHtml(s['supply-note'] || '');
-  const doc = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Planification suppléance</title><style>
-    @page { size: Letter; margin: 0.55in; }
-    body { font-family: Arial, sans-serif; color:#111; margin:0; }
-    .page { width:100%; }
-    .header { display:flex; align-items:center; gap:16px; margin-bottom:12px; }
-    .header img { max-width:90px; max-height:90px; object-fit:contain; }
-    .title { font-size:22px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
-    .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 20px; margin-top:6px; }
-    .row { font-size:14px; }
-    .line { display:inline-block; min-width:180px; border-bottom:1px solid #222; padding:0 4px 2px 4px; }
-    .line.short { min-width:70px; }
-    .section { margin-top:12px; }
-    .section-title { font-size:14px; font-weight:700; margin-bottom:4px; }
-    .work { border:1px solid #222; min-height:215px; padding:10px 12px; white-space:pre-wrap; font-size:13px; line-height:1.35; }
-    .rules { border:1px solid #222; min-height:56px; padding:8px 12px; font-size:13px; }
-    .rules ul { margin:4px 0 0 18px; padding:0; }
-    .notes { border:1px solid #222; min-height:42px; padding:8px 12px; font-size:13px; white-space:pre-wrap; }
-    .line-row { border-bottom:1px solid #222; height:18px; margin-top:8px; }
-    .bottom { display:grid; grid-template-columns:1.1fr .9fr; gap:18px; margin-top:10px; }
-    .rating-box { border:1px solid #222; padding:8px 10px; }
-    .rating-title { font-weight:700; margin-bottom:8px; font-size:13px; }
-    .rating-row { display:flex; align-items:center; gap:8px; font-size:13px; margin:6px 0; }
-    .box { font-size:16px; line-height:1; }
-    .footer-line { margin-top:16px; font-size:13px; }
-    .footer-line span { display:inline-block; min-width:220px; border-bottom:1px solid #222; padding:0 4px 2px 4px; }
-  </style></head><body><div class="page">
-    <div class="header">${SCHOOL_LOGO_DATA_URI ? `<img src="${SCHOOL_LOGO_DATA_URI}" alt="École Cardinal-Roy">` : ''}<div class="title">Planification de la suppléance</div></div>
-    <div class="grid">
-      <div class="row"><strong>Date :</strong> <span class="line">${escapeHtml(s['supply-date'])}</span></div>
-      <div class="row"><strong>Période :</strong> <span class="line short">${escapeHtml(s['supply-period'])}</span></div>
-      <div class="row"><strong>Groupe :</strong> <span class="line short">${escapeHtml(s['supply-group'])}</span></div>
-      <div class="row"><strong>Matière :</strong> <span class="line">${escapeHtml(s['supply-subject'])}</span></div>
-      <div class="row"><strong>Local :</strong> <span class="line short">${escapeHtml(s['supply-room'])}</span></div>
-      <div class="row"><strong>Niveau :</strong> <span class="line">${escapeHtml(s['supply-level'])}</span></div>
-      <div class="row"><strong>Enseignant absent :</strong> <span class="line">${escapeHtml(s['supply-teacher'])}</span></div>
-      <div class="row"><strong>Suppléant(e) :</strong> <span class="line">${escapeHtml(s['supply-replacement'])}</span></div>
-    </div>
-    <div class="section"><div class="section-title">Élève(s) absent(s) :</div>${supplyLinesHtml(4)}</div>
-    <div class="section"><div class="section-title">Travail à faire :</div><div class="work">${escapeHtml(s['supply-work'])}</div></div>
-    <div class="section"><div class="section-title">Règles :</div><div class="rules">${rulesLines.length ? `<ul>${rulesLines.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>` : ''}</div></div>
-    <div class="section"><div class="section-title">Note particulière :</div><div class="notes">${noteHtml}</div></div>
-    <div class="bottom">
-      <div><div class="section-title">Commentaires sur la période :</div>${supplyLinesHtml(3)}</div>
-      <div class="rating-box"><div class="rating-title">Période en général</div><div class="rating-row"><span class="box">☐</span><span>Excellente période</span></div><div class="rating-row"><span class="box">☐</span><span>Bonne période</span></div><div class="rating-row"><span class="box">☐</span><span>Période moyenne</span></div><div class="rating-row"><span class="box">☐</span><span>Mauvaise période</span></div></div>
-    </div>
-    <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>
-  </div><script>window.onload = () => { window.print(); };<\/script></body></html>`;
-  const w = window.open('', '_blank', 'width=900,height=1100');
-  if (!w) return;
-  w.document.open();
-  w.document.write(doc);
-  w.document.close();
-}
-
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1422,16 +1335,37 @@ async function findExistingSpreadsheetId() {
 }
 async function createAppSpreadsheet() {
   setStatus('bank-status', 'Création du Google Sheet privé...', '');
-  const data = await apiFetch('https://sheets.googleapis.com/v4/spreadsheets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ properties:{ title: APP_SHEET_NAME }, sheets:[{properties:{title:ACTIVITES_SHEET}},{properties:{title:CONFIG_SHEET}}] }) });
+  const data = await apiFetch('https://sheets.googleapis.com/v4/spreadsheets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ properties:{ title: APP_SHEET_NAME }, sheets:[{properties:{title:ACTIVITES_SHEET}},{properties:{title:CONFIG_SHEET}},{properties:{title:COURSES_SHEET}}] }) });
   const id = data.spreadsheetId;
   await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(CONFIG_SHEET+'!A1:B4')}?valueInputOption=USER_ENTERED`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[['key','value'],['app_marker',APP_MARKER],['last_course_number',''],['owner_email',googleUser?.email || '']] }) });
   await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(ACTIVITES_SHEET+'!A1:E1')}?valueInputOption=USER_ENTERED`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[['normalized','text','html','last_used','count']] }) });
+  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(COURSES_SHEET+'!A1:M1')}?valueInputOption=USER_ENTERED`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[['id','title','date_display','date_iso','course_number','sans_numero','avec_emojis','activities_html_json','devoir_html','pas_devoir','rappel_html','pas_rappel','updated_at']] }) });
   return id;
 }
 async function ensureSheetStructure() {
+  const meta = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}?fields=sheets(properties(sheetId,title))`);
+  const titles = new Set((meta.sheets || []).map(s => s.properties?.title).filter(Boolean));
+  const requests = [];
+  if (!titles.has(ACTIVITES_SHEET)) requests.push({ addSheet: { properties: { title: ACTIVITES_SHEET } } });
+  if (!titles.has(CONFIG_SHEET)) requests.push({ addSheet: { properties: { title: CONFIG_SHEET } } });
+  if (!titles.has(COURSES_SHEET)) requests.push({ addSheet: { properties: { title: COURSES_SHEET } } });
+  if (requests.length) {
+    await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ requests }) });
+  }
+
   const cfg = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(CONFIG_SHEET+'!A1:B10')}`);
   if (!(cfg.values || []).length) {
     await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(CONFIG_SHEET+'!A1:B4')}?valueInputOption=USER_ENTERED`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[['key','value'],['app_marker',APP_MARKER],['last_course_number',''],['owner_email',googleUser?.email || '']] }) });
+  }
+
+  const activitesHeader = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(ACTIVITES_SHEET+'!A1:E1')}`);
+  if (!(activitesHeader.values || []).length) {
+    await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(ACTIVITES_SHEET+'!A1:E1')}?valueInputOption=USER_ENTERED`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[['normalized','text','html','last_used','count']] }) });
+  }
+
+  const coursesHeader = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A1:M1')}`);
+  if (!(coursesHeader.values || []).length) {
+    await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A1:M1')}?valueInputOption=USER_ENTERED`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[['id','title','date_display','date_iso','course_number','sans_numero','avec_emojis','activities_html_json','devoir_html','pas_devoir','rappel_html','pas_rappel','updated_at']] }) });
   }
 }
 async function syncLastCourseNumberFromSheet() {
@@ -1454,16 +1388,144 @@ async function refreshBank() {
   renderBankList();
   setStatus('bank-status', bankActivities.length ? `${bankActivities.length} activité(s) en banque.` : 'Aucune activité enregistrée pour le moment.', 'ok');
 }
+
+function buildCourseTitleWithoutEmojis(state) {
+  return state.sansNumero ? `Cours du ${state.dateDisplay}` : `Cours #${state.courseNumber} (${state.dateDisplay})`;
+}
+
+function getCurrentCourseState() {
+  return {
+    dateDisplay: document.getElementById('date-cours').value.trim(),
+    dateISO: dpDate ? dpDate.toISOString() : '',
+    courseNumber: document.getElementById('num-cours').value.trim(),
+    sansNumero: document.getElementById('sans-numero').checked,
+    avecEmojis: document.getElementById('avec-emojis').checked,
+    activities: [...document.querySelectorAll('.activity-row .rich-editor')].map(ed => ed.innerHTML.trim()).filter(Boolean),
+    devoirHtml: document.getElementById('devoir').innerHTML.trim(),
+    pasDevoir: document.getElementById('pas-devoir').checked,
+    rappelHtml: document.getElementById('rappel').innerHTML.trim(),
+    pasRappel: document.getElementById('pas-rappel').checked
+  };
+}
+
+function fillFormFromCourseState(state) {
+  if (state.dateISO) {
+    const parsed = new Date(state.dateISO);
+    if (!isNaN(parsed)) dpDate = parsed;
+  }
+  if (state.dateDisplay) document.getElementById('date-cours').value = state.dateDisplay;
+  document.getElementById('num-cours').value = state.courseNumber || '';
+  document.getElementById('sans-numero').checked = !!state.sansNumero;
+  document.getElementById('avec-emojis').checked = state.avecEmojis !== false;
+  document.getElementById('pas-devoir').checked = !!state.pasDevoir;
+  document.getElementById('pas-rappel').checked = !!state.pasRappel;
+
+  document.querySelectorAll('.activity-row').forEach(r => r.remove());
+  const activities = Array.isArray(state.activities) && state.activities.length ? state.activities : [''];
+  activities.forEach(html => ajouterActivite(html || ''));
+
+  document.getElementById('devoir').innerHTML = state.devoirHtml || '';
+  document.getElementById('rappel').innerHTML = state.rappelHtml || '';
+
+  toggleSansNumero();
+  toggleDevoir();
+  toggleRappel();
+  sauvegarderPlanLocal();
+}
+
+async function refreshCourses() {
+  const select = document.getElementById('reuse-course-select');
+  if (!select) return;
+  if (!googleAccessToken || !appSpreadsheetId) {
+    savedCourses = [];
+    renderCourseOptions();
+    return;
+  }
+  const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A2:M')}`);
+  savedCourses = (data.values || []).map((r, idx) => ({
+    id: r[0] || '',
+    title: r[1] || '',
+    dateDisplay: r[2] || '',
+    dateISO: r[3] || '',
+    courseNumber: r[4] || '',
+    sansNumero: String(r[5] || '').toLowerCase() === 'true',
+    avecEmojis: String(r[6] || '').toLowerCase() !== 'false',
+    activities: (() => { try { return JSON.parse(r[7] || '[]'); } catch { return []; } })(),
+    devoirHtml: r[8] || '',
+    pasDevoir: String(r[9] || '').toLowerCase() === 'true',
+    rappelHtml: r[10] || '',
+    pasRappel: String(r[11] || '').toLowerCase() === 'true',
+    updatedAt: r[12] || '',
+    rowNumber: idx + 2
+  })).filter(c => c.id && c.title);
+  savedCourses.sort((a,b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  renderCourseOptions();
+}
+
+function renderCourseOptions() {
+  const select = document.getElementById('reuse-course-select');
+  if (!select) return;
+  select.innerHTML = '<option value="">Choisir un cours</option>' + savedCourses.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.title)}</option>`).join('');
+}
+
+function toggleReuseCourse() {
+  const enabled = document.getElementById('enable-reuse-course').checked;
+  document.getElementById('reuse-course-box').style.display = enabled ? '' : 'none';
+  if (!enabled) document.getElementById('reuse-course-select').value = '';
+}
+
+async function loadSavedCourse(id) {
+  const course = savedCourses.find(c => c.id === id);
+  if (!course) return;
+  fillFormFromCourseState(course);
+  syncSupplyFromCourse(true);
+  await generer();
+}
+
+async function saveCurrentCourseToBank() {
+  if (!googleAccessToken || !appSpreadsheetId) return;
+  const state = getCurrentCourseState();
+  const title = buildCourseTitleWithoutEmojis(state);
+  const values = [[
+    crypto.randomUUID(),
+    title,
+    state.dateDisplay,
+    state.dateISO,
+    state.courseNumber,
+    String(state.sansNumero),
+    String(state.avecEmojis),
+    JSON.stringify(state.activities),
+    state.devoirHtml,
+    String(state.pasDevoir),
+    state.rappelHtml,
+    String(state.pasRappel),
+    new Date().toISOString()
+  ]];
+  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A:M')}:append?valueInputOption=USER_ENTERED`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values }) });
+  await refreshCourses();
+}
+
 function renderBankList() {
   const box = document.getElementById('bank-list'); if (!box) return;
   if (!bankActivities.length) { box.innerHTML = '<div class="bank-item">Aucune activité enregistrée.</div>'; return; }
   box.innerHTML = bankActivities.map(a => `<div class="bank-item" onclick="insertBankActivityByText(${JSON.stringify(a.text)})"><div>${escapeHtml(a.text)}</div></div>`).join('');
 }
 function insertBankActivityByText(text) {
-  const empty = [...document.querySelectorAll('.activity-row .rich-editor')].find(ed => !ed.innerText.trim());
   const entry = bankActivities.find(a => a.text === text);
   const html = entry?.html || escapeHtml(text);
-  if (empty) empty.innerHTML = html; else ajouterActivite(html);
+  const current = activeActivityEditor && document.body.contains(activeActivityEditor) ? activeActivityEditor : null;
+  const empty = [...document.querySelectorAll('.activity-row .rich-editor')].find(ed => !ed.innerText.trim());
+  const target = current || empty;
+  if (target) {
+    target.innerHTML = html;
+    target.focus();
+    activeActivityEditor = target;
+    sauvegarderPlanLocal();
+    return;
+  }
+  ajouterActivite(html);
+  const last = [...document.querySelectorAll('.activity-row .rich-editor')].pop();
+  if (last) { last.focus(); activeActivityEditor = last; }
 }
 function brancherAutocompleteActivite(row) {
   const editor = row.querySelector('.rich-editor'); const menu = row.querySelector('.autocomplete-menu'); let activeIndex = -1;
@@ -1478,12 +1540,76 @@ function brancherAutocompleteActivite(row) {
   editor.addEventListener('input', () => openMenu(currentMatches()));
   editor.addEventListener('focus', () => openMenu(currentMatches()));
   editor.addEventListener('keydown', (e) => {
-    const items = [...menu.querySelectorAll('.autocomplete-item')]; if (!items.length || menu.style.display === 'none') return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = (activeIndex + 1) % items.length; }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = (activeIndex - 1 + items.length) % items.length; }
-    else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); items[activeIndex].dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return; }
-    else if (e.key === 'Escape') { closeMenu(); return; } else return;
-    items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+    const items = [...menu.querySelectorAll('.autocomplete-item')];
+    const menuOpen = items.length && menu.style.display !== 'none';
+
+    if (menuOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = (activeIndex + 1) % items.length;
+        items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = (activeIndex - 1 + items.length) % items.length;
+        items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+        return;
+      }
+      if (e.key === 'Enter' && activeIndex >= 0) {
+        e.preventDefault();
+        items[activeIndex].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        return;
+      }
+      if (e.key === 'Escape') {
+        closeMenu();
+        return;
+      }
+    }
+
+    if (e.key === 'Tab' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const rows = [...document.querySelectorAll('.activity-row')];
+      const currentRow = editor.closest('.activity-row');
+      const currentIndex = rows.indexOf(currentRow);
+      let nextRow = rows[currentIndex + 1];
+      if (!nextRow) {
+        ajouterActivite();
+        nextRow = [...document.querySelectorAll('.activity-row')][currentIndex + 1];
+      }
+      const nextEditor = nextRow?.querySelector('.rich-editor');
+      if (nextEditor) {
+        nextEditor.focus();
+        const range = document.createRange();
+        range.selectNodeContents(nextEditor);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        activeActivityEditor = nextEditor;
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const rows = [...document.querySelectorAll('.activity-row')];
+      const currentRow = editor.closest('.activity-row');
+      const currentIndex = rows.indexOf(currentRow);
+      const prevRow = rows[currentIndex - 1];
+      const prevEditor = prevRow?.querySelector('.rich-editor');
+      if (prevEditor) {
+        prevEditor.focus();
+        const range = document.createRange();
+        range.selectNodeContents(prevEditor);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        activeActivityEditor = prevEditor;
+      }
+      return;
+    }
   });
   document.addEventListener('mousedown', (e) => { if (!row.contains(e.target)) closeMenu(); });
 }
@@ -1575,6 +1701,222 @@ async function publishToClassroom() {
     onsharestart: 'classroomShareStarted',
     onsharecomplete: 'classroomShareCompleted'
   });
+}
+
+
+function getPlanStateForLocal() {
+  return {
+    dateDisplay: document.getElementById('date-cours').value || '',
+    dateISO: dpDate ? dpDate.toISOString() : '',
+    courseNumber: document.getElementById('num-cours').value || '',
+    sansNumero: document.getElementById('sans-numero').checked,
+    avecEmojis: document.getElementById('avec-emojis').checked,
+    enableReuseCourse: document.getElementById('enable-reuse-course')?.checked || false,
+    activities: [...document.querySelectorAll('.activity-row .rich-editor')].map(ed => ed.innerHTML),
+    devoirHtml: document.getElementById('devoir').innerHTML,
+    pasDevoir: document.getElementById('pas-devoir').checked,
+    rappelHtml: document.getElementById('rappel').innerHTML,
+    pasRappel: document.getElementById('pas-rappel').checked,
+    supplyState: getSupplyState()
+  };
+}
+
+function sauvegarderPlanLocal() {
+  try {
+    localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify(getPlanStateForLocal()));
+  } catch (e) {
+    console.warn('sauvegarderPlanLocal', e);
+  }
+}
+
+function restaurerPlanLocal() {
+  try {
+    const raw = localStorage.getItem(LOCAL_PLAN_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (!state) return;
+    if (state.dateISO) {
+      const parsed = new Date(state.dateISO);
+      if (!isNaN(parsed)) dpDate = parsed;
+    }
+    document.getElementById('date-cours').value = state.dateDisplay || formatDateStr(dpDate);
+    document.getElementById('num-cours').value = state.courseNumber || '';
+    document.getElementById('sans-numero').checked = !!state.sansNumero;
+    document.getElementById('avec-emojis').checked = state.avecEmojis !== false;
+    document.getElementById('enable-reuse-course').checked = !!state.enableReuseCourse;
+    toggleReuseCourse();
+
+    document.querySelectorAll('.activity-row').forEach(r => r.remove());
+    const activities = Array.isArray(state.activities) && state.activities.length ? state.activities : [''];
+    activities.forEach(html => ajouterActivite(html || ''));
+
+    document.getElementById('devoir').innerHTML = state.devoirHtml || '';
+    document.getElementById('pas-devoir').checked = !!state.pasDevoir;
+    document.getElementById('rappel').innerHTML = state.rappelHtml || '';
+    document.getElementById('pas-rappel').checked = !!state.pasRappel;
+    if (state.supplyState) { Object.entries(state.supplyState).forEach(([id,val]) => { const el = document.getElementById(id); if (el) el.value = val || ''; }); }
+
+    toggleSansNumero();
+    toggleDevoir();
+    toggleRappel();
+  } catch (e) {
+    console.warn('restaurerPlanLocal', e);
+  }
+}
+
+function effacerPlanLocal() {
+  localStorage.removeItem(LOCAL_PLAN_KEY);
+}
+
+
+function initSupplyRuleBank() {
+  const box = document.getElementById('supply-rules-bank');
+  if (!box) return;
+  box.innerHTML = SUPPLY_RULES_DEFAULT.map(rule => `<button type="button" class="rule-chip">${escapeHtml(rule)}</button>`).join('');
+  [...box.querySelectorAll('.rule-chip')].forEach((btn, idx) => btn.addEventListener('click', () => appendSupplyRule(SUPPLY_RULES_DEFAULT[idx])));
+}
+function appendSupplyRule(rule) {
+  const ta = document.getElementById('supply-rules');
+  if (!ta) return;
+  const lines = ta.value.split(/\n+/).map(v => v.trim()).filter(Boolean);
+  if (!lines.includes(rule)) lines.push(rule);
+  ta.value = lines.join('\n');
+  sauvegarderSupplyLocal();
+}
+function buildSupplyWorkTextFromCourse() {
+  const parts = [];
+  const activities = [...document.querySelectorAll('.activity-row .rich-editor')].map(ed => htmlVersTexteClassroom(ed.innerHTML).trim()).filter(Boolean);
+  activities.forEach((txt, idx) => {
+    const lines = txt.split(/\n+/).map(v => v.trim()).filter(Boolean);
+    if (!lines.length) return;
+    parts.push(`${idx + 1}. ${lines[0]}`);
+    for (let i = 1; i < lines.length; i++) parts.push(`   ${lines[i]}`);
+  });
+  const devoir = document.getElementById('pas-devoir').checked ? '' : htmlVersTexteClassroom(document.getElementById('devoir').innerHTML).trim();
+  const rappel = document.getElementById('pas-rappel').checked ? '' : htmlVersTexteClassroom(document.getElementById('rappel').innerHTML).trim();
+  if (devoir) parts.push('', 'Devoir : ' + devoir.replace(/\n+/g, ' '));
+  if (rappel) parts.push('', 'Rappel : ' + rappel.replace(/\n+/g, ' '));
+  return parts.join('\n').trim();
+}
+function syncSupplyFromCourse(forceWork) {
+  const dateEl = document.getElementById('supply-date');
+  if (dateEl) dateEl.value = document.getElementById('date-cours').value.trim();
+  const workEl = document.getElementById('supply-work');
+  const generated = buildSupplyWorkTextFromCourse();
+  if (workEl && (forceWork || !workEl.value.trim())) workEl.value = generated;
+  const courseNum = document.getElementById('num-cours').value.trim();
+  const groupEl = document.getElementById('supply-group');
+  if (groupEl && !groupEl.value.trim() && courseNum) groupEl.value = courseNum;
+  const teacherEl = document.getElementById('supply-teacher');
+  if (teacherEl && !teacherEl.value.trim()) teacherEl.value = 'Kevin Tremblay';
+  const subjectEl = document.getElementById('supply-subject');
+  if (subjectEl && !subjectEl.value.trim()) subjectEl.value = 'Français';
+  const levelEl = document.getElementById('supply-level');
+  if (levelEl && !levelEl.value.trim()) levelEl.value = '3';
+  const rulesEl = document.getElementById('supply-rules');
+    sauvegarderSupplyLocal();
+}
+function getSupplyState() {
+  const ids = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-work','supply-rules','supply-note','supply-return'];
+  const out = {};
+  ids.forEach(id => out[id] = document.getElementById(id)?.value || '');
+  return out;
+}
+function sauvegarderSupplyLocal() {
+  try { localStorage.setItem(SUPPLY_LOCAL_KEY, JSON.stringify(getSupplyState())); } catch(e) { console.warn('sauvegarderSupplyLocal', e); }
+}
+function restaurerSupplyLocal() {
+  try {
+    const raw = localStorage.getItem(SUPPLY_LOCAL_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (!state) return;
+    Object.entries(state).forEach(([id,val]) => { const el = document.getElementById(id); if (el) el.value = val || ''; });
+  } catch(e) { console.warn('restaurerSupplyLocal', e); }
+}
+function clearSupplyLocal() { localStorage.removeItem(SUPPLY_LOCAL_KEY); }
+function supplyLinesHtml(count, filledLines) {
+  const lines = [];
+  const src = (filledLines || []).map(v => escapeHtml(v));
+  for (let i = 0; i < count; i++) lines.push(`<div class="line-fill">${src[i] || '&nbsp;'}</div>`);
+  return lines.join('');
+}
+function printSupplyPlan() {
+  syncSupplyFromCourse(false);
+  const s = getSupplyState();
+  const absentLines = [];
+  const workLines = (s['supply-work'] || '').split(/\n/).map(v => v.replace(/\s+$/,'')).filter((v, i, arr) => v || i < arr.length - 1);
+  const rulesLines = (s['supply-rules'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
+  const commentLines = [];
+  const ratings = ['Excellente période','Bonne période','Période moyenne','Mauvaise période'];
+  const ratingHtml = ratings.map(r => `<div class="rating-row"><span class="box">☐</span><span>${escapeHtml(r)}</span></div>`).join('');
+  const workHtml = workLines.map(v => `<div class="work-line">${escapeHtml(v || ' ')}</div>`).join('');
+  const noteHtml = escapeHtml(s['supply-note'] || '');
+  const doc = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Planification suppléance</title><style>
+    @page { size: letter portrait; margin: 0.45in; }
+    body { margin:0; font: 15px/1.35 Arial, Helvetica, sans-serif; color:#111; }
+    .page { width: 100%; box-sizing:border-box; }
+    .top { display:grid; grid-template-columns: 1.4fr 1fr; column-gap: 26px; align-items:start; }
+    .brand { display:flex; align-items:center; gap:18px; margin-top:4px; }
+    .brand img { height:54px; width:auto; }
+    .title { font-weight:700; font-size:19px; }
+    .meta-right { font-size:14px; }
+    .meta-right .row { display:flex; justify-content:flex-end; gap:8px; margin-bottom:6px; }
+    .line { display:inline-block; min-width:140px; border-bottom:1px solid #111; }
+    .line.short { min-width:80px; }
+    .middle { display:grid; grid-template-columns: 1.2fr 0.9fr; gap:26px; margin-top:12px; }
+    .label-line { margin: 4px 0; font-size:14px; }
+    .section-title { font-size:16px; font-weight:700; text-decoration:underline; margin: 14px 0 8px; }
+    .line-fill { min-height:20px; border-bottom:1px solid #111; margin-bottom:7px; padding:0 2px 2px; }
+    .rating-box { border:1px solid #111; padding:12px 14px; }
+    .rating-title { font-size:16px; text-decoration:underline; margin-bottom:10px; }
+    .rating-row { display:flex; align-items:center; gap:10px; margin:15px 0; font-size:14px; }
+    .box { display:inline-block; width:18px; text-align:center; font-size:16px; }
+    .work-line { min-height:18px; margin-bottom:6px; white-space:pre-wrap; }
+    .rules { margin-top:10px; }
+    .rules ul { margin:6px 0 0 22px; }
+    .rules li { margin:7px 0; }
+    .note-box { border:1px solid #111; padding:8px 10px; margin-top:18px; text-align:center; min-height:42px; }
+    .comments-title { display:inline-block; background:#fff16a; font-weight:700; text-decoration:underline; padding:1px 2px; margin-top:18px; }
+    .footer-line { margin-top:14px; text-align:center; font-weight:700; }
+    .footer-line span { display:inline-block; min-width:210px; border-bottom:1px solid #111; vertical-align:middle; }
+  </style></head><body><div class="page">
+    <div class="top">
+      <div class="brand">${SCHOOL_LOGO_DATA_URI ? `<img src="${SCHOOL_LOGO_DATA_URI}" alt="École Cardinal-Roy">` : ''}<div class="title">Planification de la suppléance</div></div>
+      <div class="meta-right">
+        <div class="row"><strong>Date :</strong> <span class="line">${escapeHtml(s['supply-date'])}</span></div>
+        <div class="row"><strong>Période :</strong> <span class="line short">${escapeHtml(s['supply-period'])}</span></div>
+        <div style="height:12px"></div>
+        <div class="row"><strong>Enseignant absent :</strong> <span class="line">${escapeHtml(s['supply-teacher'])}</span></div>
+        <div class="row"><strong>Suppléant(e) :</strong> <span class="line">${escapeHtml(s['supply-replacement'])}</span></div>
+      </div>
+    </div>
+    <div class="middle">
+      <div>
+        <div class="label-line"><strong>Matière :</strong> ${escapeHtml(s['supply-subject'])}</div>
+        <div class="label-line"><strong>Niveau :</strong> ${escapeHtml(s['supply-level'])}</div>
+        <div class="label-line"><strong>Groupe :</strong> ${escapeHtml(s['supply-group'])}</div>
+        <div class="label-line"><strong>Local :</strong> ${escapeHtml(s['supply-room'])}</div>
+        <div class="section-title">Élève(s) absent(s) :</div>
+        ${supplyLinesHtml(4, absentLines)}
+      </div>
+      <div>
+        <div class="rating-box"><div class="rating-title">Période en général</div>${ratingHtml}</div>
+      </div>
+    </div>
+    <div class="section-title">Travail à faire</div>
+    ${workHtml}
+    <div class="rules"><strong>Règles :</strong><ul>${rulesLines.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul></div>
+    <div class="note-box">${noteHtml || '&nbsp;'}</div>
+    <div class="comments-title">Commentaires sur la période :</div>
+    ${supplyLinesHtml(3, commentLines)}
+    <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>
+  </div><script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };<\/script></body></html>`;
+  const win = window.open('', '_blank', 'width=900,height=1200');
+  if (!win) { alert('La fenêtre d’impression a été bloquée par le navigateur.'); return; }
+  win.document.open();
+  win.document.write(doc);
+  win.document.close();
 }
 
 let _lastRange = null;
@@ -1691,6 +2033,9 @@ function reinitialiser() {
   document.getElementById('sans-numero').checked = false;
   document.getElementById('num-cours').disabled = false;
   document.getElementById('avec-emojis').checked = true;
+  document.getElementById('enable-reuse-course').checked = false;
+  toggleReuseCourse();
+  document.getElementById('reuse-course-select').value = '';
   initNumCours();
   document.querySelectorAll('.activity-row').forEach(r => r.remove());
   initActivites();
@@ -1713,25 +2058,38 @@ function reinitialiser() {
     </div>`;
   document.getElementById('btn-copy').style.display = 'none';
   document.getElementById('btn-reset').style.display = 'none';
-  const supplyIds = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-work','supply-rules','supply-note','supply-return'];
-  supplyIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  const ssub = document.getElementById('supply-subject'); if (ssub) ssub.value = 'Français';
-  const stea = document.getElementById('supply-teacher'); if (stea) stea.value = 'Kevin Tremblay';
-  const slev = document.getElementById('supply-level'); if (slev) slev.value = '3e secondaire';
-  localStorage.removeItem(SUPPLY_LOCAL_KEY);
-  syncSupplyFromCurrent(false);
+  clearSupplyLocal();
+  syncSupplyFromCourse(true);
+  effacerPlanLocal();
 }
+
 
 const classroomSelectEl = document.getElementById('classroom-course-select');
 if (classroomSelectEl) classroomSelectEl.addEventListener('change', () => { const shareSlot = document.getElementById('share-to-classroom-slot'); if (shareSlot) shareSlot.innerHTML = ''; });
 
+const reuseCourseSelectEl = document.getElementById('reuse-course-select');
+if (reuseCourseSelectEl) reuseCourseSelectEl.addEventListener('change', (e) => { if (e.target.value) loadSavedCourse(e.target.value); });
+
 initDate();
 initActivites();
+restaurerPlanLocal();
 refreshGoogleUi();
 renderBankList();
-restoreSupplyState();
-bindSupplyAutosave();
-syncSupplyFromCurrent(false);
+renderCourseOptions();
+initSupplyRuleBank();
+restaurerSupplyLocal();
+syncSupplyFromCourse(false);
+document.getElementById('num-cours').addEventListener('input', sauvegarderPlanLocal);
+document.getElementById('date-cours').addEventListener('change', sauvegarderPlanLocal);
+document.getElementById('avec-emojis').addEventListener('change', sauvegarderPlanLocal);
+document.getElementById('sans-numero').addEventListener('change', sauvegarderPlanLocal);
+document.getElementById('enable-reuse-course').addEventListener('change', sauvegarderPlanLocal);
+document.getElementById('devoir').addEventListener('input', sauvegarderPlanLocal);
+document.getElementById('rappel').addEventListener('input', sauvegarderPlanLocal);
+document.getElementById('pas-devoir').addEventListener('change', sauvegarderPlanLocal);
+document.getElementById('pas-rappel').addEventListener('change', sauvegarderPlanLocal);
+document.getElementById('activities-list').addEventListener('input', (e) => { if (e.target.classList.contains('rich-editor')) { sauvegarderPlanLocal(); syncSupplyFromCourse(false); } });
+['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-absent','supply-work','supply-rules','supply-note','supply-comments','supply-rating','supply-return'].forEach(id => { const el = document.getElementById(id); if (el) { el.addEventListener('input', sauvegarderSupplyLocal); el.addEventListener('change', sauvegarderSupplyLocal); } });
 if (googleAccessToken) { afterGoogleLogin().catch(err => { console.error(err); setStatus('google-status', 'Session expirée. Reconnectez-vous à Google.', 'err'); }); }
 </script>
 
