@@ -103,7 +103,7 @@
   #reuse-course-box { margin-top: 10px; }
 
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .row2 .field-group { display: flex; flex-direction: column; margin-top: 0; align-self: start; }
+  .row2 .field-group { display: flex; flex-direction: column; }
   .row2 .field-group > input,
   .row2 .field-group .date-input-wrapper { height: 42px; }
   .row2 .field-group > input { box-sizing: border-box; }
@@ -966,8 +966,12 @@ function ajouterActivite(prefillHtml = '') {
   `;
   const editor = row.querySelector('.rich-editor');
   if (prefillHtml) editor.innerHTML = prefillHtml;
-  editor.addEventListener('focus', () => { activeActivityEditor = editor; });
-  editor.addEventListener('click', () => { activeActivityEditor = editor; });
+  const markActive = () => { activeActivityEditor = editor; };
+  editor.addEventListener('focus', markActive);
+  editor.addEventListener('click', markActive);
+  editor.addEventListener('keyup', markActive);
+  editor.addEventListener('mouseup', markActive);
+  editor.addEventListener('input', markActive);
   list.appendChild(row);
   brancherDragActivite(row);
   brancherAutocompleteActivite(row);
@@ -1093,7 +1097,8 @@ function saveNumCours(num) {
   localStorage.setItem('cardinal_last_num', num);
 }
 
-async function generer() {
+async function generer(options = {}) {
+  const { skipBankSave = false, switchToPreview = true } = options;
   const sansNumero = document.getElementById('sans-numero').checked;
   const avecEmojis = document.getElementById('avec-emojis').checked;
   const num = document.getElementById('num-cours').value.trim();
@@ -1104,7 +1109,7 @@ async function generer() {
   if (!sansNumero && !num) {
     alert('Veuillez entrer le numéro du cours (ou cocher "Ne pas numéroter le cours").');
     document.getElementById('num-cours').focus();
-    return;
+    return false;
   }
 
   if (!sansNumero && num) {
@@ -1128,7 +1133,7 @@ async function generer() {
   });
   if (activites.length === 0) {
     alert('Veuillez entrer au moins une activité.');
-    return;
+    return false;
   }
 
   const devoirHTML = document.getElementById('devoir').innerHTML.trim();
@@ -1166,20 +1171,18 @@ async function generer() {
   document.getElementById('btn-copy').style.display = 'flex';
   document.getElementById('btn-reset').style.display = 'flex';
 
-  if (googleAccessToken && appSpreadsheetId) {
-    try {
-      await saveCurrentCourseToBank();
-    } catch (e) {
-      setStatus('bank-status', 'Plan généré, mais le cours n\'a pas pu être enregistré : ' + e.message, 'err');
-    }
-  }
+  if (switchToPreview) switchRightTab('preview');
 
-  if (googleAccessToken && appSpreadsheetId && bankEntries.length) {
-    const dedup = [];
-    const seen = new Set();
-    bankEntries.forEach(entry => { if (!seen.has(entry.normalized)) { seen.add(entry.normalized); dedup.push(entry); } });
-    try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', 'Plan généré, mais la banque n\'a pas pu être mise à jour : ' + e.message, 'err'); }
+  if (!skipBankSave && googleAccessToken && appSpreadsheetId) {
+    if (bankEntries.length) {
+      const dedup = [];
+      const seen = new Set();
+      bankEntries.forEach(entry => { if (!seen.has(entry.normalized)) { seen.add(entry.normalized); dedup.push(entry); } });
+      try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', "Plan généré, mais la banque n'a pas pu être mise à jour : " + e.message, 'err'); }
+    }
+    try { await saveCurrentCourseToBank(); } catch (e) { setStatus('bank-status', "Plan généré, mais le cours n'a pas pu être enregistré : " + e.message, 'err'); }
   }
+  return true;
 }
 
 function esc(s) {
@@ -1238,7 +1241,7 @@ async function googleConnect() {
 }
 async function googleDisconnect() {
   if (googleAccessToken && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(googleAccessToken, () => {});
-  googleAccessToken = ''; googleUser = null; classroomCourses = []; bankActivities = [];
+  googleAccessToken = ''; googleUser = null; classroomCourses = []; bankActivities = []; savedCourses = [];
   localStorage.removeItem('g_access_token');
   refreshGoogleUi(); renderBankList();
   document.getElementById('classroom-course-select').innerHTML = '<option value="">Choisir un cours</option>';
@@ -1258,8 +1261,23 @@ async function loadGoogleProfile() { googleUser = await apiFetch('https://openid
 function refreshGoogleUi() {
   const pill = document.getElementById('google-user-pill');
   const btnOut = document.getElementById('btn-google-disconnect');
-  if (googleUser?.email) { pill.style.display = ''; pill.textContent = googleUser.name ? (googleUser.name + ' - ' + googleUser.email) : googleUser.email; btnOut.style.display = ''; }
-  else { pill.style.display = 'none'; btnOut.style.display = 'none'; }
+  const btnIn = document.getElementById('btn-google-connect');
+  if (googleUser?.email) {
+    pill.style.display = '';
+    pill.textContent = googleUser.name ? (googleUser.name + ' - ' + googleUser.email) : googleUser.email;
+    btnOut.style.display = '';
+    btnIn.textContent = 'Connexion réussie';
+    btnIn.disabled = true;
+    btnIn.style.opacity = '0.65';
+    btnIn.style.cursor = 'default';
+  } else {
+    pill.style.display = 'none';
+    btnOut.style.display = 'none';
+    btnIn.textContent = 'Se connecter avec Google';
+    btnIn.disabled = false;
+    btnIn.style.opacity = '';
+    btnIn.style.cursor = '';
+  }
   const sheetPill = document.getElementById('sheet-pill');
   if (appSpreadsheetId) { sheetPill.style.display = ''; sheetPill.textContent = 'Sheet connecté'; } else sheetPill.style.display = 'none';
 }
@@ -1421,6 +1439,7 @@ async function loadSavedCourse(id) {
   const course = savedCourses.find(c => c.id === id);
   if (!course) return;
   fillFormFromCourseState(course);
+  await generer({ skipBankSave: true, switchToPreview: true });
 }
 
 async function saveCurrentCourseToBank() {
@@ -1454,31 +1473,31 @@ function renderBankList() {
 function insertBankActivityByText(text) {
   const entry = bankActivities.find(a => a.text === text);
   const html = entry?.html || escapeHtml(text);
+  const editors = [...document.querySelectorAll('.activity-row .rich-editor')];
   const current = activeActivityEditor && document.body.contains(activeActivityEditor) ? activeActivityEditor : null;
-  const empty = [...document.querySelectorAll('.activity-row .rich-editor')].find(ed => !ed.innerText.trim());
+  const empty = editors.find(ed => !ed.innerText.trim());
   const target = current || empty;
-
   if (target) {
     target.innerHTML = html;
     target.focus();
     activeActivityEditor = target;
-
     const range = document.createRange();
     range.selectNodeContents(target);
     range.collapse(false);
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
-
+    switchRightTab('preview');
     sauvegarderPlanLocal();
     return;
   }
-
   ajouterActivite(html);
   const last = [...document.querySelectorAll('.activity-row .rich-editor')].pop();
   if (last) {
     last.focus();
+    last.innerHTML = html;
     activeActivityEditor = last;
+    switchRightTab('preview');
     sauvegarderPlanLocal();
   }
 }
@@ -1743,7 +1762,6 @@ function fmt(cmd) {
     sel.addRange(_lastRange);
   }
   document.execCommand(cmd, false, null);
-  sauvegarderPlanLocal();
   hideToolbar();
 }
 
@@ -1751,9 +1769,13 @@ const toolbar = document.getElementById('format-toolbar');
 
 function showToolbar(rect) {
   toolbar.style.display = 'flex';
-  const top = rect.top + window.scrollY - toolbar.offsetHeight - 8;
-  const left = rect.left + rect.width / 2 + window.scrollX;
-  toolbar.style.top  = Math.max(4, top) + 'px';
+  const toolbarHeight = toolbar.offsetHeight || 36;
+  const toolbarWidth = toolbar.offsetWidth || 120;
+  let top = rect.top - toolbarHeight - 8;
+  if (top < 8) top = rect.bottom + 8;
+  let left = rect.left + rect.width / 2;
+  left = Math.max(toolbarWidth / 2 + 8, Math.min(window.innerWidth - toolbarWidth / 2 - 8, left));
+  toolbar.style.top = top + 'px';
   toolbar.style.left = left + 'px';
 }
 
@@ -1767,29 +1789,18 @@ document.addEventListener('selectionchange', function() {
     hideToolbar();
     return;
   }
-
   const anchor = sel.anchorNode;
-  const el = anchor ? (anchor.nodeType === 3 ? anchor.parentElement : anchor) : null;
-  const editor = el && el.closest ? el.closest('.rich-editor') : null;
-
-  if (editor && editor.closest('.activity-row')) {
-    activeActivityEditor = editor;
-  }
-
-  if (editor) {
-    saveRange();
-  }
-
-  if (!sel || sel.isCollapsed || sel.toString().trim() === '' || !editor) {
+  const el = anchor && (anchor.nodeType === 3 ? anchor.parentElement : anchor);
+  if (!el || !el.closest('.rich-editor')) { hideToolbar(); return; }
+  const editor = el.closest('.rich-editor');
+  if (editor && editor.closest('.activity-row')) activeActivityEditor = editor;
+  if (sel.isCollapsed || sel.toString().trim() === '') {
     hideToolbar();
     return;
   }
-
+  saveRange();
   const rect = sel.getRangeAt(0).getBoundingClientRect();
-  toolbar.style.display = 'flex';
-  const top = rect.top + window.scrollY - toolbar.offsetHeight - 8;
-  toolbar.style.top  = Math.max(4, top) + 'px';
-  toolbar.style.left = (rect.left + rect.width / 2 + window.scrollX) + 'px';
+  showToolbar(rect);
 });
 
 // Hide toolbar on click outside rich editors
@@ -1881,6 +1892,12 @@ if (classroomSelectEl) classroomSelectEl.addEventListener('change', () => { cons
 const reuseCourseSelectEl = document.getElementById('reuse-course-select');
 if (reuseCourseSelectEl) reuseCourseSelectEl.addEventListener('change', (e) => { if (e.target.value) loadSavedCourse(e.target.value); });
 
+
+document.addEventListener('focusin', (e) => {
+  const editor = e.target.closest && e.target.closest('.rich-editor');
+  if (editor && editor.closest('.activity-row')) activeActivityEditor = editor;
+});
+
 initDate();
 initActivites();
 restaurerPlanLocal();
@@ -1897,15 +1914,6 @@ document.getElementById('rappel').addEventListener('input', sauvegarderPlanLocal
 document.getElementById('pas-devoir').addEventListener('change', sauvegarderPlanLocal);
 document.getElementById('pas-rappel').addEventListener('change', sauvegarderPlanLocal);
 document.getElementById('activities-list').addEventListener('input', (e) => { if (e.target.classList.contains('rich-editor')) sauvegarderPlanLocal(); });
-
-['devoir', 'rappel'].forEach((id) => {
-  const ed = document.getElementById(id);
-  if (!ed) return;
-  ed.addEventListener('focus', saveRange);
-  ed.addEventListener('mouseup', saveRange);
-  ed.addEventListener('keyup', saveRange);
-});
-
 if (googleAccessToken) { afterGoogleLogin().catch(err => { console.error(err); setStatus('google-status', 'Session expirée. Reconnectez-vous à Google.', 'err'); }); }
 </script>
 
