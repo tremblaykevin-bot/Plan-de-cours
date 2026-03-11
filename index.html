@@ -1608,7 +1608,7 @@ async function generer() {
     const dedup = [];
     const seen = new Set();
     bankEntries.forEach(entry => { if (!seen.has(entry.normalized)) { seen.add(entry.normalized); dedup.push(entry); } });
-    try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', 'Plan généré, mais la banque n'a pas pu être mise à jour : ' + e.message, 'err'); }
+    try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', "Plan généré, mais la banque n'a pas pu être mise à jour : " + e.message, 'err'); }
   }
 
   if (googleAccessToken && appSpreadsheetId) {
@@ -1617,7 +1617,7 @@ async function generer() {
       await refreshCourses();
     } catch (e) {
       console.warn(e);
-      setStatus('bank-status', 'Plan généré, mais le cours n'a pas pu être enregistré : ' + (e?.message || e), 'err');
+      setStatus('bank-status', "Plan généré, mais le cours n'a pas pu être enregistré : " + (e?.message || e), 'err');
     }
   }
 }
