@@ -1617,7 +1617,7 @@ async function generer() {
     try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', "Plan généré, mais la banque n'a pas pu être mise à jour : " + e.message, 'err'); }
   }
 
-  if (!suppressCourseAutoSave && googleAccessToken && appSpreadsheetId) {
+  if (googleAccessToken && appSpreadsheetId) {
     try {
       await saveCurrentCourseToBank();
       await refreshCourses();
@@ -2026,54 +2026,56 @@ async function deleteSelectedCourse() {
   const select = document.getElementById('reuse-course-select');
   const id = select?.value || '';
   if (!id || !googleAccessToken || !appSpreadsheetId) return;
+  await refreshSheetMetadata();
   const course = savedCourses.find(c => c.id === id);
   if (!course) return;
   const ok = window.confirm(`Effacer définitivement le cours « ${course.title} » ?`);
   if (!ok) return;
 
-  try {
-    await refreshSheetMetadata();
-    const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A2:M')}`);
-    const rows = data.values || [];
-    const idx = rows.findIndex(r => (r[0] || '') === id);
-    if (idx >= 0) {
-      const rowNumber = idx + 2;
-      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A'+rowNumber+':M'+rowNumber)}:clear`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'}
-      });
-      if (coursesSheetId) {
-        try {
-          await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({
-              requests:[{
-                deleteDimension:{
-                  range:{
-                    sheetId: coursesSheetId,
-                    dimension:'ROWS',
-                    startIndex: rowNumber - 1,
-                    endIndex: rowNumber
-                  }
-                }
-              }]
-            })
-          });
-        } catch (e) {
-          console.warn('Suppression de ligne impossible, contenu vidé seulement.', e);
-        }
-      }
-    }
-    savedCourses = savedCourses.filter(c => c.id !== id);
+  const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A2:M')}`);
+  const rows = data.values || [];
+  const idx = rows.findIndex(r => (r[0] || '') === id);
+  if (idx < 0) {
     if (select) select.value = '';
-    renderCourseOptions();
     await refreshCourses();
     updateDeleteCourseButton();
-  } catch (e) {
-    console.error('Erreur lors de la suppression du cours :', e);
-    alert('Erreur lors de la suppression : ' + (e?.message || e));
+    return;
   }
+  const rowNumber = idx + 2;
+
+  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A'+rowNumber+':M'+rowNumber)}:clear`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'}
+  });
+
+  if (coursesSheetId) {
+    try {
+      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          requests:[{
+            deleteDimension:{
+              range:{
+                sheetId: coursesSheetId,
+                dimension:'ROWS',
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber
+              }
+            }
+          }]
+        })
+      });
+    } catch (e) {
+      console.warn('Suppression de ligne impossible, contenu vidé seulement.', e);
+    }
+  }
+
+  savedCourses = savedCourses.filter(c => c.id !== id);
+  if (select) select.value = '';
+  renderCourseOptions();
+  await refreshCourses();
+  updateDeleteCourseButton();
 }
 
 
@@ -2373,36 +2375,33 @@ async function publishToClassroom() {
     setStatus('classroom-status', 'Générez un plan avant de publier.', 'err');
     return;
   }
-  if (!window.gapi || !gapi.sharetoclassroom || typeof gapi.sharetoclassroom.render !== 'function') {
-    setStatus('classroom-status', 'Le module Share to Classroom n\'est pas chargé.', 'err');
-    return;
+
+  const btn = document.getElementById('btn-classroom-publish');
+  if (btn) { btn.disabled = true; btn.textContent = 'Publication…'; }
+  setStatus('classroom-status', 'Publication en cours…', '');
+
+  try {
+    await apiFetch(`https://classroom.googleapis.com/v1/courses/${encodeURIComponent(courseId)}/announcements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, state: 'PUBLISHED' })
+    });
+
+    const slot = document.getElementById('share-to-classroom-slot');
+    if (slot) {
+      const courseName = document.getElementById('classroom-course-select').selectedOptions[0]?.text || '';
+      slot.innerHTML = `<div style="margin-top:6px;padding:10px 14px;background:#e6f4ea;border:1px solid #a8d5b5;border-radius:10px;color:#1e6b3a;font-size:0.88rem;font-weight:600;">
+        ✅ Plan publié avec succès dans <em>${escapeHtml(courseName)}</em>
+      </div>`;
+      setTimeout(() => { if (slot) slot.innerHTML = ''; }, 6000);
+    }
+    setStatus('classroom-status', '', '');
+  } catch (e) {
+    console.error('Classroom publish error:', e);
+    setStatus('classroom-status', 'Erreur lors de la publication : ' + (e?.message || e), 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Publier'; }
   }
-
-  const slot = document.getElementById('share-to-classroom-slot');
-  const firstLine = text.split(/\n+/).map(s => s.trim()).find(Boolean) || 'Plan de cours';
-  const shareUrl = window.location.href.split('#')[0];
-
-  slot.innerHTML = '';
-  setStatus('classroom-status', 'Clique sur le bouton Share to Classroom qui vient d\'apparaître.', '');
-
-  window.classroomShareStarted = function() {
-    setStatus('classroom-status', 'Fenêtre Classroom ouverte...', '');
-  };
-  window.classroomShareCompleted = function() {
-    setStatus('classroom-status', 'Partage Classroom terminé.', 'ok');
-  };
-
-  gapi.sharetoclassroom.render('share-to-classroom-slot', {
-    url: shareUrl,
-    size: 32,
-    theme: 'classic',
-    itemtype: 'announcement',
-    courseid: courseId,
-    title: firstLine,
-    body: text,
-    onsharestart: 'classroomShareStarted',
-    onsharecomplete: 'classroomShareCompleted'
-  });
 }
 
 
