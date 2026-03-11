@@ -2645,19 +2645,14 @@ async function downloadSupplyPDF() {
       ${supplyLinesHtml(3, [])}
       <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>`;
 
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;width:750px;';
-    wrapper.innerHTML = `<style>${css}</style><div class="page">${bodyHtml}</div>`;
-    document.body.appendChild(wrapper);
+    const fullHtml = `<style>${css}</style><div class="page">${bodyHtml}</div>`;
 
     await html2pdf().set({
       margin: [0.45, 0.45, 0.45, 0.45],
       filename,
       html2canvas: { scale: 2, useCORS: true, logging: false },
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-    }).from(wrapper).save();
-
-    document.body.removeChild(wrapper);
+    }).from(fullHtml, 'string').save();
   } catch(e) {
     console.error('PDF suppléance :', e);
     alert('Erreur lors de la génération du PDF : ' + (e?.message || e));
