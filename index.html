@@ -1608,7 +1608,17 @@ async function generer() {
     const dedup = [];
     const seen = new Set();
     bankEntries.forEach(entry => { if (!seen.has(entry.normalized)) { seen.add(entry.normalized); dedup.push(entry); } });
-    try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', 'Plan généré, mais la banque n\'a pas pu être mise à jour : ' + e.message, 'err'); }
+    try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', 'Plan généré, mais la banque n'a pas pu être mise à jour : ' + e.message, 'err'); }
+  }
+
+  if (googleAccessToken && appSpreadsheetId) {
+    try {
+      await saveCurrentCourseToBank();
+      await refreshCourses();
+    } catch (e) {
+      console.warn(e);
+      setStatus('bank-status', 'Plan généré, mais le cours n'a pas pu être enregistré : ' + (e?.message || e), 'err');
+    }
   }
 }
 
@@ -1696,6 +1706,7 @@ function updateRoleBasedUi() {
     if (emojiCb) emojiCb.checked = false;
     if (sansCb && !numInput.value.trim()) sansCb.checked = true;
   } else {
+    if (emojiCb) emojiCb.checked = true;
     const last = localStorage.getItem('cardinal_last_num');
     if (last && !numInput.value.trim()) {
       numInput.value = String(last);
