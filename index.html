@@ -1787,17 +1787,28 @@ async function googleDisconnect() {
   applySupplyDefaultsForCurrentUser(true);
 }
 async function afterGoogleLogin(refreshUi = true) {
-  setStatus('google-status', 'Connexion réussie. Chargement...', 'ok');
-  await loadGoogleProfile();
-  await ensureOnlineStorage();
-  await refreshBank();
-  await refreshCourses();
-  await refreshSupplyPlans();
-  await loadClassroomCourses();
-  if (refreshUi) refreshGoogleUi();
-  updateRoleBasedUi();
-  applySupplyDefaultsForCurrentUser(false);
-  setStatus('google-status', '', '');
+  try {
+    await loadGoogleProfile();
+    setStatus('google-status', 'Connexion réussie. Chargement...', 'ok');
+    await ensureOnlineStorage();
+    await refreshBank();
+    await refreshCourses();
+    await refreshSupplyPlans();
+    await loadClassroomCourses();
+    if (refreshUi) refreshGoogleUi();
+    updateRoleBasedUi();
+    applySupplyDefaultsForCurrentUser(false);
+    setStatus('google-status', '', '');
+  } catch (e) {
+    googleUser = null;
+    if (!googleAccessToken) {
+      setStatus('google-status', 'Connexion requise pour la banque en ligne et Classroom.', '');
+    } else {
+      setStatus('google-status', 'Connexion requise pour la banque en ligne et Classroom.', '');
+    }
+    if (refreshUi) refreshGoogleUi();
+    throw e;
+  }
 }
 async function loadGoogleProfile() { googleUser = await apiFetch('https://openidconnect.googleapis.com/v1/userinfo'); }
 function refreshGoogleUi() {
