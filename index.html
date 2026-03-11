@@ -1091,6 +1091,11 @@ let coursesSheetId = null;
 let bankActivities = [];
 let savedCourses = [];
 let suppressCourseAutoSave = false;
+let currentLoadedCourseId = '';
+let currentLoadedSupplyId = '';
+let hasUnsavedPlan = false;
+let _sheetMetaCache = null;
+let _sheetMetaCacheTime = 0;
 let classroomCourses = [];
 let savedSupplyPlans = [];
 let latestGeneratedText = '';
@@ -1617,7 +1622,7 @@ async function generer() {
     try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', "Plan généré, mais la banque n'a pas pu être mise à jour : " + e.message, 'err'); }
   }
 
-  if (googleAccessToken && appSpreadsheetId) {
+  if (!suppressCourseAutoSave && googleAccessToken && appSpreadsheetId) {
     try {
       await saveCurrentCourseToBank();
       await refreshCourses();
@@ -1797,21 +1802,14 @@ async function afterGoogleLogin(refreshUi = true) {
     await loadGoogleProfile();
     setStatus('google-status', 'Connexion réussie. Chargement...', 'ok');
     await ensureOnlineStorage();
-    await refreshBank();
-    await refreshCourses();
-    await refreshSupplyPlans();
-    await loadClassroomCourses();
+    await Promise.all([refreshBank(), refreshCourses(), refreshSupplyPlans(), loadClassroomCourses()]);
     if (refreshUi) refreshGoogleUi();
     updateRoleBasedUi();
     applySupplyDefaultsForCurrentUser(false);
     setStatus('google-status', '', '');
   } catch (e) {
     googleUser = null;
-    if (!googleAccessToken) {
-      setStatus('google-status', 'Connexion requise pour la banque en ligne et Classroom.', '');
-    } else {
-      setStatus('google-status', 'Connexion requise pour la banque en ligne et Classroom.', '');
-    }
+    setStatus('google-status', 'Connexion requise pour la banque en ligne et Classroom.', '');
     if (refreshUi) refreshGoogleUi();
     throw e;
   }
@@ -1833,14 +1831,21 @@ function refreshGoogleUi() {
   const sheetPill = document.getElementById('sheet-pill');
   if (appSpreadsheetId) { sheetPill.style.display = ''; sheetPill.textContent = 'Sheet connecté'; } else sheetPill.style.display = 'none';
 }
-async function refreshSheetMetadata() {
+async function refreshSheetMetadata(force = false) {
   if (!googleAccessToken || !appSpreadsheetId) return;
+  const now = Date.now();
+  if (!force && _sheetMetaCache && (now - _sheetMetaCacheTime) < 5 * 60 * 1000) {
+    const sheets = _sheetMetaCache;
+    supplyPlansSheetId = sheets.find(s => s.properties?.title === SUPPLY_PLANS_SHEET)?.properties?.sheetId ?? null;
+    coursesSheetId = sheets.find(s => s.properties?.title === COURSES_SHEET)?.properties?.sheetId ?? null;
+    return;
+  }
   const meta = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}?fields=sheets(properties(sheetId,title))`);
   const sheets = meta.sheets || [];
-  const supplySheet = sheets.find(s => s.properties?.title === SUPPLY_PLANS_SHEET);
-  const courseSheet = sheets.find(s => s.properties?.title === COURSES_SHEET);
-  supplyPlansSheetId = supplySheet?.properties?.sheetId ?? null;
-  coursesSheetId = courseSheet?.properties?.sheetId ?? null;
+  _sheetMetaCache = sheets;
+  _sheetMetaCacheTime = now;
+  supplyPlansSheetId = sheets.find(s => s.properties?.title === SUPPLY_PLANS_SHEET)?.properties?.sheetId ?? null;
+  coursesSheetId = sheets.find(s => s.properties?.title === COURSES_SHEET)?.properties?.sheetId ?? null;
 }
 
 async function ensureOnlineStorage() {
@@ -2026,56 +2031,40 @@ async function deleteSelectedCourse() {
   const select = document.getElementById('reuse-course-select');
   const id = select?.value || '';
   if (!id || !googleAccessToken || !appSpreadsheetId) return;
-  await refreshSheetMetadata();
   const course = savedCourses.find(c => c.id === id);
   if (!course) return;
   const ok = window.confirm(`Effacer définitivement le cours « ${course.title} » ?`);
   if (!ok) return;
-
-  const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A2:M')}`);
-  const rows = data.values || [];
-  const idx = rows.findIndex(r => (r[0] || '') === id);
-  if (idx < 0) {
+  try {
+    await refreshSheetMetadata();
+    const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A2:M')}`);
+    const rows = data.values || [];
+    const idx = rows.findIndex(r => (r[0] || '') === id);
+    if (idx >= 0) {
+      const rowNumber = idx + 2;
+      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A'+rowNumber+':M'+rowNumber)}:clear`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}
+      });
+      if (coursesSheetId) {
+        try {
+          await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: coursesSheetId, dimension: 'ROWS', startIndex: rowNumber - 1, endIndex: rowNumber } } }] })
+          });
+          _sheetMetaCache = null; // invalider le cache après écriture structurelle
+        } catch (e) { console.warn('Suppression de ligne impossible, contenu vidé seulement.', e); }
+      }
+    }
+    if (currentLoadedCourseId === id) currentLoadedCourseId = '';
+    savedCourses = savedCourses.filter(c => c.id !== id);
     if (select) select.value = '';
+    renderCourseOptions();
     await refreshCourses();
     updateDeleteCourseButton();
-    return;
+  } catch (e) {
+    console.error('Erreur suppression cours :', e);
+    alert('Erreur lors de la suppression : ' + (e?.message || e));
   }
-  const rowNumber = idx + 2;
-
-  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A'+rowNumber+':M'+rowNumber)}:clear`, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'}
-  });
-
-  if (coursesSheetId) {
-    try {
-      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
-          requests:[{
-            deleteDimension:{
-              range:{
-                sheetId: coursesSheetId,
-                dimension:'ROWS',
-                startIndex: rowNumber - 1,
-                endIndex: rowNumber
-              }
-            }
-          }]
-        })
-      });
-    } catch (e) {
-      console.warn('Suppression de ligne impossible, contenu vidé seulement.', e);
-    }
-  }
-
-  savedCourses = savedCourses.filter(c => c.id !== id);
-  if (select) select.value = '';
-  renderCourseOptions();
-  await refreshCourses();
-  updateDeleteCourseButton();
 }
 
 
@@ -2120,13 +2109,21 @@ async function deleteSelectedSupplyPlan() {
   if (!plan?.rowNumber) return;
   const ok = window.confirm(`Effacer définitivement la planification « ${plan.title} » ?`);
   if (!ok) return;
-  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ requests:[{ deleteDimension:{ range:{ sheetId: supplyPlansSheetId, dimension:'ROWS', startIndex: plan.rowNumber - 1, endIndex: plan.rowNumber } } }] })
-  });
-  if (select) select.value = '';
-  await refreshSupplyPlans();
+  try {
+    await refreshSheetMetadata();
+    await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: supplyPlansSheetId, dimension: 'ROWS', startIndex: plan.rowNumber - 1, endIndex: plan.rowNumber } } }] })
+    });
+    if (currentLoadedSupplyId === id) currentLoadedSupplyId = '';
+    savedSupplyPlans = savedSupplyPlans.filter(p => p.id !== id);
+    if (select) select.value = '';
+    renderSupplyPlanOptions();
+    await refreshSupplyPlans();
+  } catch (e) {
+    console.error('Erreur suppression planification :', e);
+    alert('Erreur lors de la suppression : ' + (e?.message || e));
+  }
 }
 
 function getSupplyPlanPayload() {
@@ -2147,23 +2144,49 @@ async function saveSupplyPlan() {
   const course = getCurrentCourseState();
   const title = `${supply['supply-date'] || course.dateDisplay || 'Sans date'} - P${supply['supply-period'] || '?'} - Groupe ${supply['supply-group'] || '?'}`;
   saveSupplyProfileForCurrentUser();
-  const values = [[crypto.randomUUID(), title, new Date().toISOString(), JSON.stringify({ courseState: course, supplyState: supply })]];
-  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(SUPPLY_PLANS_SHEET+'!A:D')}:append?valueInputOption=USER_ENTERED`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values }) });
+  const id = currentLoadedSupplyId || crypto.randomUUID();
+  const values = [[id, title, new Date().toISOString(), JSON.stringify({ courseState: course, supplyState: supply })]];
+
+  if (currentLoadedSupplyId) {
+    const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(SUPPLY_PLANS_SHEET+'!A2:A')}`);
+    const rows = data.values || [];
+    const idx = rows.findIndex(r => (r[0] || '') === currentLoadedSupplyId);
+    if (idx >= 0) {
+      const rowNumber = idx + 2;
+      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(SUPPLY_PLANS_SHEET+'!A'+rowNumber+':D'+rowNumber)}?valueInputOption=USER_ENTERED`, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ values })
+      });
+      await refreshSupplyPlans();
+      const sel = document.getElementById('reuse-supply-select');
+      if (sel) sel.value = id;
+      return;
+    }
+  }
+  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(SUPPLY_PLANS_SHEET+'!A:D')}:append?valueInputOption=USER_ENTERED`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ values })
+  });
+  currentLoadedSupplyId = id;
   await refreshSupplyPlans();
 }
 
 async function loadSavedSupplyPlan(id) {
   const plan = savedSupplyPlans.find(p => p.id === id);
   if (!plan?.payload) return;
-  if (plan.payload.courseState) fillFormFromCourseState(plan.payload.courseState);
-  if (plan.payload.supplyState) {
-    Object.entries(plan.payload.supplyState).forEach(([key, val]) => {
-      const el = document.getElementById(key);
-      if (el) el.value = val || '';
-    });
+  suppressCourseAutoSave = true;
+  currentLoadedSupplyId = id;
+  try {
+    if (plan.payload.courseState) fillFormFromCourseState(plan.payload.courseState);
+    if (plan.payload.supplyState) {
+      Object.entries(plan.payload.supplyState).forEach(([key, val]) => {
+        const el = document.getElementById(key);
+        if (el) el.value = val || '';
+      });
+    }
+    await generer();
+    switchRightTab('supply');
+  } finally {
+    suppressCourseAutoSave = false;
   }
-  await generer();
-  switchRightTab('supply');
 }
 
 function toggleReuseCourse() {
@@ -2177,6 +2200,7 @@ async function loadSavedCourse(id) {
   const course = savedCourses.find(c => c.id === id);
   if (!course) return;
   suppressCourseAutoSave = true;
+  currentLoadedCourseId = id;
   try {
     fillFormFromCourseState(course);
     syncSupplyFromCourse(true);
@@ -2193,22 +2217,33 @@ async function saveCurrentCourseToBank() {
   if (!googleAccessToken || !appSpreadsheetId) return;
   const state = getCurrentCourseState();
   const title = buildCourseTitleWithoutEmojis(state);
+  const id = currentLoadedCourseId || crypto.randomUUID();
   const values = [[
-    crypto.randomUUID(),
-    title,
-    state.dateDisplay,
-    state.dateISO,
-    state.courseNumber,
-    String(state.sansNumero),
-    String(state.avecEmojis),
-    JSON.stringify(state.activities),
-    state.devoirHtml,
-    String(state.pasDevoir),
-    state.rappelHtml,
-    String(state.pasRappel),
-    new Date().toISOString()
+    id, title, state.dateDisplay, state.dateISO, state.courseNumber,
+    String(state.sansNumero), String(state.avecEmojis),
+    JSON.stringify(state.activities), state.devoirHtml, String(state.pasDevoir),
+    state.rappelHtml, String(state.pasRappel), new Date().toISOString()
   ]];
-  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A:M')}:append?valueInputOption=USER_ENTERED`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values }) });
+
+  if (currentLoadedCourseId) {
+    const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A2:M')}`);
+    const rows = data.values || [];
+    const idx = rows.findIndex(r => (r[0] || '') === currentLoadedCourseId);
+    if (idx >= 0) {
+      const rowNumber = idx + 2;
+      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A'+rowNumber+':M'+rowNumber)}?valueInputOption=USER_ENTERED`, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ values })
+      });
+      await refreshCourses();
+      const select = document.getElementById('reuse-course-select');
+      if (select) select.value = currentLoadedCourseId;
+      return;
+    }
+  }
+  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A:M')}:append?valueInputOption=USER_ENTERED`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ values })
+  });
+  currentLoadedCourseId = id;
   await refreshCourses();
 }
 
@@ -2319,15 +2354,32 @@ function brancherAutocompleteActivite(row) {
 }
 async function saveActivitiesToBank(entries) {
   if (!googleAccessToken || !appSpreadsheetId || !entries.length) return;
-  const now = new Date().toISOString(); const existingByNorm = new Map(bankActivities.map(a => [a.normalized, a]));
+  const now = new Date().toISOString();
+  const existingByNorm = new Map(bankActivities.map(a => [a.normalized, a]));
+  const updates = [];
+  const appends = [];
   for (const entry of entries) {
     const existing = existingByNorm.get(entry.normalized);
     if (existing) {
-      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(ACTIVITES_SHEET+'!A'+existing.rowNumber+':E'+existing.rowNumber)}?valueInputOption=USER_ENTERED`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[[ entry.normalized, existing.text || entry.text, existing.html || entry.html, now, (existing.count || 0) + 1 ]] }) });
+      updates.push({ range: `${ACTIVITES_SHEET}!A${existing.rowNumber}:E${existing.rowNumber}`, values: [[entry.normalized, existing.text || entry.text, existing.html || entry.html, now, (existing.count || 0) + 1]] });
     } else {
-      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(ACTIVITES_SHEET+'!A:E')}:append?valueInputOption=USER_ENTERED`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[[ entry.normalized, entry.text, entry.html, now, 1 ]] }) });
+      appends.push([entry.normalized, entry.text, entry.html, now, 1]);
     }
   }
+  const promises = [];
+  if (updates.length) {
+    promises.push(apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values:batchUpdate?valueInputOption=USER_ENTERED`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data: updates })
+    }));
+  }
+  if (appends.length) {
+    promises.push(apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(ACTIVITES_SHEET+'!A:E')}:append?valueInputOption=USER_ENTERED`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ values: appends })
+    }));
+  }
+  await Promise.all(promises);
   await refreshBank();
 }
 async function loadClassroomCourses() {
@@ -2356,7 +2408,7 @@ function htmlVersTexteClassroom(html) {
 }
 function buildCurrentPlanTextForClassroom() {
   const sansNumero = document.getElementById('sans-numero').checked; const avecEmojis = document.getElementById('avec-emojis').checked; const num = document.getElementById('num-cours').value.trim(); const date = formatDateStr(dpDate); const emojis = avecEmojis ? (' ' + getEmojis()) : '';
-  let texte = sansNumero ? `Cours du ${date}${emojis}\n\n` : `Cours #${num} (${date})${emojis}\n\n`;
+  let texte = sansNumero ? `Cours du ${date}${emojis}\n` : `Cours #${num} (${date})${emojis}\n`;
   const activiteEditors = document.querySelectorAll('.activity-row .rich-editor'); let idx = 0;
   activiteEditors.forEach(ed => { const t = htmlVersTexteClassroom(ed.innerHTML); if (!t) return; const lines = t.split(/\n+/).map(x => x.trim()).filter(Boolean); if (!lines.length) return; texte += NUMERO_EMOJIS[idx] + ' ' + lines[0] + '\n'; for (let i = 1; i < lines.length; i++) texte += '   ' + lines[i] + '\n'; idx++; });
   const pasDevoir = document.getElementById('pas-devoir').checked; const devoir = htmlVersTexteClassroom(document.getElementById('devoir').innerHTML); const pasRappel = document.getElementById('pas-rappel').checked; const rappel = htmlVersTexteClassroom(document.getElementById('rappel').innerHTML);
@@ -2366,33 +2418,21 @@ function buildCurrentPlanTextForClassroom() {
 }
 async function publishToClassroom() {
   const courseId = document.getElementById('classroom-course-select').value;
-  if (!courseId) {
-    setStatus('classroom-status', 'Choisissez un cours.', 'err');
-    return;
-  }
+  if (!courseId) { setStatus('classroom-status', 'Choisissez un cours.', 'err'); return; }
   const text = latestGeneratedText || buildCurrentPlanTextForClassroom();
-  if (!text) {
-    setStatus('classroom-status', 'Générez un plan avant de publier.', 'err');
-    return;
-  }
-
+  if (!text) { setStatus('classroom-status', 'Générez un plan avant de publier.', 'err'); return; }
   const btn = document.getElementById('btn-classroom-publish');
   if (btn) { btn.disabled = true; btn.textContent = 'Publication…'; }
   setStatus('classroom-status', 'Publication en cours…', '');
-
   try {
     await apiFetch(`https://classroom.googleapis.com/v1/courses/${encodeURIComponent(courseId)}/announcements`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ text, state: 'PUBLISHED' })
     });
-
+    const courseName = document.getElementById('classroom-course-select').selectedOptions[0]?.text || '';
     const slot = document.getElementById('share-to-classroom-slot');
     if (slot) {
-      const courseName = document.getElementById('classroom-course-select').selectedOptions[0]?.text || '';
-      slot.innerHTML = `<div style="margin-top:6px;padding:10px 14px;background:#e6f4ea;border:1px solid #a8d5b5;border-radius:10px;color:#1e6b3a;font-size:0.88rem;font-weight:600;">
-        ✅ Plan publié avec succès dans <em>${escapeHtml(courseName)}</em>
-      </div>`;
+      slot.innerHTML = `<div style="margin-top:6px;padding:10px 14px;background:#e6f4ea;border:1px solid #a8d5b5;border-radius:10px;color:#1e6b3a;font-size:0.88rem;font-weight:600;">✅ Plan publié avec succès dans <em>${escapeHtml(courseName)}</em></div>`;
       setTimeout(() => { if (slot) slot.innerHTML = ''; }, 6000);
     }
     setStatus('classroom-status', '', '');
@@ -2705,6 +2745,8 @@ function afficherCopie() {
 function reinitialiser() {
   latestGeneratedText = "";
   latestGeneratedHtml = "";
+  currentLoadedCourseId = '';
+  currentLoadedSupplyId = '';
   dpDate = new Date();
   document.getElementById('date-cours').value = formatDateStr(dpDate);
   // Reset new options
