@@ -709,6 +709,11 @@
   /* === Intégration Google + banque en ligne === */
   .google-card { margin-top:18px; border:1px solid #e2ddd8; border-radius:14px; background:#fff; padding:16px 18px; box-shadow:0 6px 18px rgba(0,0,0,.04); }
   .google-card h3 { margin:0 0 10px 0; font-size:.98rem; }
+.google-title-wrap { display:inline-flex; align-items:center; gap:6px; }
+.info-tip { position:relative; display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border:1px solid #9ca3af; border-radius:50%; color:#4b5563; font-size:12px; font-weight:700; cursor:help; background:#fff; line-height:1; }
+.info-tip .info-tip-text { position:absolute; top:calc(100% + 8px); right:0; width:260px; padding:10px 12px; border-radius:10px; background:#111827; color:#fff; font-size:12px; line-height:1.4; box-shadow:0 10px 25px rgba(0,0,0,0.18); opacity:0; pointer-events:none; transform:translateY(-4px); transition:opacity .16s ease, transform .16s ease; z-index:9999; font-weight:400; }
+.info-tip:hover .info-tip-text, .info-tip:focus-visible .info-tip-text { opacity:1; transform:translateY(0); }
+
   .google-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   .google-status { font-size:.84rem; color:#6c665f; margin-top:8px; min-height:1.2em; }
   .google-status.ok { color:#137333; } .google-status.err { color:#b3261e; }
@@ -942,7 +947,7 @@
         </button>
       </div>
       <div class="google-card">
-        <h3>Google</h3>
+        <h3><span class="google-title-wrap">Google <span class="info-tip" tabindex="0" aria-label="Information sur le stockage des données">i<span class="info-tip-text">Vos données de cours et votre contenu sont stockés dans votre Drive personnel. Seul votre compte y a accès, sauf si vous choisissez vous-même de les partager.</span></span></span></h3>
         <div class="google-row" id="google-auth-row">
           <button class="btn-google" id="btn-google-connect" onclick="googleConnect()">Se connecter avec Google</button>
           <button class="btn-secondary-soft" id="btn-google-disconnect" onclick="googleDisconnect()" style="display:none;">Se déconnecter</button>
@@ -2021,9 +2026,9 @@ async function deleteSelectedCourse() {
   const select = document.getElementById('reuse-course-select');
   const id = select?.value || '';
   if (!id || !googleAccessToken || !appSpreadsheetId) return;
-  if (!coursesSheetId) await refreshSheetMetadata();
+  await refreshSheetMetadata();
   const course = savedCourses.find(c => c.id === id);
-  if (!course || !coursesSheetId) return;
+  if (!course) return;
   const ok = window.confirm(`Effacer définitivement le cours « ${course.title} » ?`);
   if (!ok) return;
 
@@ -2031,34 +2036,47 @@ async function deleteSelectedCourse() {
   const rows = data.values || [];
   const idx = rows.findIndex(r => (r[0] || '') === id);
   if (idx < 0) {
+    if (select) select.value = '';
     await refreshCourses();
     updateDeleteCourseButton();
     return;
   }
   const rowNumber = idx + 2;
 
-  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
+  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A'+rowNumber+':M'+rowNumber)}:clear`, {
     method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      requests:[{
-        deleteDimension:{
-          range:{
-            sheetId: coursesSheetId,
-            dimension:'ROWS',
-            startIndex: rowNumber - 1,
-            endIndex: rowNumber
-          }
-        }
-      }]
-    })
+    headers:{'Content-Type':'application/json'}
   });
 
+  if (coursesSheetId) {
+    try {
+      await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          requests:[{
+            deleteDimension:{
+              range:{
+                sheetId: coursesSheetId,
+                dimension:'ROWS',
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber
+              }
+            }
+          }]
+        })
+      });
+    } catch (e) {
+      console.warn('Suppression de ligne impossible, contenu vidé seulement.', e);
+    }
+  }
+
+  savedCourses = savedCourses.filter(c => c.id !== id);
   if (select) select.value = '';
+  renderCourseOptions();
   await refreshCourses();
   updateDeleteCourseButton();
 }
-
 
 
 async function refreshSupplyPlans() {
