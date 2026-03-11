@@ -162,8 +162,8 @@
         "title title";
       align-items:center;
       column-gap:12px;
-      row-gap:10px;
-      padding:14px 16px;
+      row-gap:8px;
+      padding:12px 14px;
       min-height:auto;
     }
     #school-logo {
@@ -174,10 +174,10 @@
       top:auto;
       left:auto;
       transform:none;
-      width:min(52vw, 240px) !important;
-      max-width:min(52vw, 240px) !important;
+      width:min(50vw, 220px) !important;
+      max-width:min(50vw, 220px) !important;
       height:auto !important;
-      max-height:52px;
+      max-height:44px;
       margin:0;
     }
     header h1 {
@@ -186,10 +186,13 @@
       width:100%;
       justify-self:center;
       align-self:center;
-      font-size:clamp(1.28rem, 5.2vw, 2rem);
+      font-size:clamp(1.18rem, 4.9vw, 1.7rem);
       line-height:1.08;
-      padding:0 8px;
+      padding:0 4px;
       text-align:center;
+    }
+    header h1 img {
+      display:none !important;
     }
     .school-switcher-ui {
       position:static;
@@ -200,14 +203,19 @@
       align-items:flex-end;
       justify-self:end;
       width:auto;
-      max-width:44vw;
+      max-width:46vw;
+    }
+    .btn-school-toggle {
+      padding:8px 10px;
+      font-size:0.8rem;
+      white-space:nowrap;
     }
     .school-select-wrap {
       position:absolute;
       top:100%;
       right:0;
       margin-top:8px;
-      width:min(320px, calc(100vw - 32px));
+      width:min(320px, calc(100vw - 28px));
     }
     .school-select { width:100%; }
   }
@@ -840,7 +848,12 @@
       </div>
       <div id="reuse-course-box" style="display:none;">
         <label for="reuse-course-select">Cours enregistrés</label>
-        <select id="reuse-course-select"><option value="">Choisir un cours</option></select>
+        <div class="supply-reuse-row">
+          <div class="field-group">
+            <select id="reuse-course-select"><option value="">Choisir un cours</option></select>
+          </div>
+          <button type="button" class="btn-delete-course" id="btn-delete-course" onclick="deleteSelectedCourse()">Effacer</button>
+        </div>
         <p class="hint">Choisissez un cours déjà généré pour remplir automatiquement les champs.</p>
       </div>
     </div>
@@ -1902,6 +1915,7 @@ function toggleReuseCourse() {
 
 async function loadSavedCourse(id) {
   const course = savedCourses.find(c => c.id === id);
+  updateDeleteCourseButton();
   if (!course) return;
   fillFormFromCourseState(course);
   syncSupplyFromCourse(true);
@@ -2460,7 +2474,7 @@ const classroomSelectEl = document.getElementById('classroom-course-select');
 if (classroomSelectEl) classroomSelectEl.addEventListener('change', () => { const shareSlot = document.getElementById('share-to-classroom-slot'); if (shareSlot) shareSlot.innerHTML = ''; });
 
 const reuseCourseSelectEl = document.getElementById('reuse-course-select');
-if (reuseCourseSelectEl) reuseCourseSelectEl.addEventListener('change', (e) => { if (e.target.value) loadSavedCourse(e.target.value); });
+if (reuseCourseSelectEl) reuseCourseSelectEl.addEventListener('change', (e) => { updateDeleteCourseButton(); if (e.target.value) loadSavedCourse(e.target.value); });
 
 initDate();
 initActivites();
