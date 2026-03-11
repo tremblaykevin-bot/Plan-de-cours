@@ -2023,15 +2023,38 @@ async function deleteSelectedCourse() {
   if (!id || !googleAccessToken || !appSpreadsheetId) return;
   if (!coursesSheetId) await refreshSheetMetadata();
   const course = savedCourses.find(c => c.id === id);
-  if (!course?.rowNumber || !coursesSheetId) return;
+  if (!course || !coursesSheetId) return;
   const ok = window.confirm(`Effacer définitivement le cours « ${course.title} » ?`);
   if (!ok) return;
+
+  const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A2:M')}`);
+  const rows = data.values || [];
+  const idx = rows.findIndex(r => (r[0] || '') === id);
+  if (idx < 0) {
+    await refreshCourses();
+    updateDeleteCourseButton();
+    return;
+  }
+  const rowNumber = idx + 2;
+
   await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ requests:[{ deleteDimension:{ range:{ sheetId: coursesSheetId, dimension:'ROWS', startIndex: course.rowNumber - 1, endIndex: course.rowNumber } } }] })
+    body: JSON.stringify({
+      requests:[{
+        deleteDimension:{
+          range:{
+            sheetId: coursesSheetId,
+            dimension:'ROWS',
+            startIndex: rowNumber - 1,
+            endIndex: rowNumber
+          }
+        }
+      }]
+    })
   });
-  select.value = '';
+
+  if (select) select.value = '';
   await refreshCourses();
   updateDeleteCourseButton();
 }
