@@ -907,8 +907,7 @@
       </div>
     </div>
 
-    <button class="btn-generate" onclick="generer()">Générer le plan de cours</button>
-    </div>
+        </div>
     <div id="left-plan-supply" style="display:none;"></div>
   </div>
 
@@ -929,7 +928,7 @@
             <line x1="3" y1="9" x2="21" y2="9"/>
             <line x1="9" y1="21" x2="9" y2="9"/>
           </svg>
-          <p>Remplissez le formulaire<br>et cliquez sur <em>Générer</em></p>
+          <p>Remplissez le formulaire<br>l’aperçu se met à jour automatiquement</p>
         </div>
       </div>
       <div class="actions-row">
@@ -1198,6 +1197,7 @@ function shiftDay(delta) {
   document.getElementById('date-cours').value = formatDateStr(dpDate);
   sauvegarderPlanLocal();
   if (dpOpen) renderCalendar();
+  scheduleLivePreview(true);
 }
 
 function togglePicker() {
@@ -1318,6 +1318,7 @@ function dpPickDay(d) {
   document.getElementById('date-cours').value = formatDateStr(dpDate);
   sauvegarderPlanLocal();
   closePicker();
+  scheduleLivePreview(true);
 }
 
 // ── Supply date picker state ──
@@ -1404,12 +1405,15 @@ function ajouterActivite(prefillHtml = '') {
   brancherAutocompleteActivite(row);
   reindexActivites();
   sauvegarderPlanLocal();
+  scheduleLivePreview();
 }
 
 function supprimerActivite(btn) {
   btn.closest('.activity-row').remove();
   reindexActivites();
   sauvegarderPlanLocal();
+  syncSupplyFromCourse(true);
+  scheduleLivePreview();
 }
 
 function reindexActivites() {
@@ -1453,6 +1457,9 @@ function brancherDragActivite(row) {
     row.parentNode.insertBefore(draggedActivity, before ? row : row.nextSibling);
     reindexActivites();
     sauvegarderPlanLocal();
+    syncSupplyFromCourse(true);
+    scheduleLivePreview();
+    sauvegarderPlanLocal();
   });
 }
 
@@ -1466,6 +1473,7 @@ function toggleSansNumero() {
     input.value = '';
     if (hint) hint.style.display = 'none';
   }
+  scheduleLivePreview();
 
 }
 
@@ -1493,6 +1501,7 @@ function toggleRappel() {
     ed.removeAttribute('disabled-editor');
     ed.contentEditable = 'true';
   }
+  scheduleLivePreview();
 }
 
 function getEmojis() {
@@ -1531,7 +1540,27 @@ function saveNumCours(num) {
   localStorage.setItem('cardinal_last_num', String(num));
 }
 
-async function generer() {
+let livePreviewEmojis = '';
+let livePreviewEmojiMonth = -1;
+let livePreviewScheduled = null;
+
+function getLivePreviewEmojis(enabled) {
+  if (!enabled) return '';
+  const currentMonth = dpDate.getMonth();
+  if (!livePreviewEmojis || livePreviewEmojiMonth !== currentMonth) {
+    livePreviewEmojis = getEmojis();
+    livePreviewEmojiMonth = currentMonth;
+  }
+  return livePreviewEmojis ? (' ' + livePreviewEmojis) : '';
+}
+
+function resetLivePreviewEmojis() {
+  livePreviewEmojis = '';
+  livePreviewEmojiMonth = -1;
+}
+
+function renderPlanPreview(options = {}) {
+  const { persist = false, alertOnMissing = false } = options;
   const sansNumero = document.getElementById('sans-numero').checked;
   const avecEmojis = document.getElementById('avec-emojis').checked;
   const num = document.getElementById('num-cours').value.trim();
@@ -1539,19 +1568,15 @@ async function generer() {
   const pasDevoir = document.getElementById('pas-devoir').checked;
   const pasRappel = document.getElementById('pas-rappel').checked;
 
-  if (!sansNumero && !num) {
+  if (alertOnMissing && !sansNumero && !num) {
     alert('Veuillez entrer le numéro du cours (ou cocher "Ne pas numéroter le cours").');
     document.getElementById('num-cours').focus();
-    return;
+    return false;
   }
 
-  if (!sansNumero && num) {
-    saveNumCours(parseInt(num, 10));
-    if (googleAccessToken && appSpreadsheetId) { try { await updateLastCourseNumberOnline(parseInt(num, 10)); } catch(e) { console.warn(e); } }
-  }
-
-  const emojis = avecEmojis ? (' ' + getEmojis()) : '';
-  const titre = sansNumero ? `Cours du ${esc(date)}${emojis}` : `Cours #${esc(num)} (${esc(date)})${emojis}`;
+  const numForTitle = num || '…';
+  const emojis = getLivePreviewEmojis(avecEmojis);
+  const titre = sansNumero ? `Cours du ${esc(date)}${emojis}` : `Cours #${esc(numForTitle)} (${esc(date)})${emojis}`;
 
   const activiteEditors = document.querySelectorAll('.activity-row .rich-editor');
   const activites = [];
@@ -1564,15 +1589,29 @@ async function generer() {
     const normalized = normalizeActivity(text);
     if (normalized) bankEntries.push({ normalized, text, html });
   });
-  if (activites.length === 0) {
-    alert('Veuillez entrer au moins une activité.');
-    return;
-  }
 
   const devoirHTML = document.getElementById('devoir').innerHTML.trim();
   const devoirText = document.getElementById('devoir').innerText.trim();
   const rappelHTML = document.getElementById('rappel').innerHTML.trim();
   const rappelText = document.getElementById('rappel').innerText.trim();
+
+  if (!activites.length && !devoirText && !rappelText) {
+    document.getElementById('plan-preview').innerHTML = `
+      <div class="empty-state">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <line x1="3" y1="9" x2="21" y2="9"/>
+          <line x1="9" y1="21" x2="9" y2="9"/>
+        </svg>
+        <p>Remplissez le formulaire<br>l’aperçu se met à jour automatiquement</p>
+      </div>`;
+    clipboardHTML = '';
+    latestGeneratedHtml = '';
+    latestGeneratedText = '';
+    document.getElementById('btn-copy').style.display = 'none';
+    document.getElementById('btn-reset').style.display = 'none';
+    return true;
+  }
 
   let previewHTML = `<p class="titre"><b><u>${titre}</u></b></p>`;
   activites.forEach((a, idx) => {
@@ -1604,13 +1643,43 @@ async function generer() {
   document.getElementById('btn-copy').style.display = 'flex';
   document.getElementById('btn-reset').style.display = 'flex';
 
-  if (googleAccessToken && appSpreadsheetId && bankEntries.length) {
-    const dedup = [];
-    const seen = new Set();
-    bankEntries.forEach(entry => { if (!seen.has(entry.normalized)) { seen.add(entry.normalized); dedup.push(entry); } });
-    try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', 'Plan généré, mais la banque n\'a pas pu être mise à jour : ' + e.message, 'err'); }
+  if (persist) {
+    if (!sansNumero && num) {
+      saveNumCours(parseInt(num, 10));
+      if (googleAccessToken && appSpreadsheetId) {
+        updateLastCourseNumberOnline(parseInt(num, 10)).catch(e => console.warn(e));
+      }
+    }
+    if (googleAccessToken && appSpreadsheetId && bankEntries.length) {
+      const dedup = [];
+      const seen = new Set();
+      bankEntries.forEach(entry => {
+        if (!seen.has(entry.normalized)) {
+          seen.add(entry.normalized);
+          dedup.push(entry);
+        }
+      });
+      saveActivitiesToBank(dedup).catch(e => {
+        setStatus('bank-status', 'Plan généré, mais la banque n\'a pas pu être mise à jour : ' + e.message, 'err');
+      });
+    }
   }
+  return true;
 }
+
+function scheduleLivePreview(resetEmojis = false) {
+  if (resetEmojis) resetLivePreviewEmojis();
+  if (livePreviewScheduled) cancelAnimationFrame(livePreviewScheduled);
+  livePreviewScheduled = requestAnimationFrame(() => {
+    livePreviewScheduled = null;
+    renderPlanPreview({ persist: false, alertOnMissing: false });
+  });
+}
+
+async function generer() {
+  return renderPlanPreview({ persist: true, alertOnMissing: true });
+}
+
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1704,6 +1773,7 @@ function updateRoleBasedUi() {
     }
   }
   toggleSansNumero();
+  scheduleLivePreview(true);
 }
 function applySupplyDefaultsForCurrentUser(force = false) {
   const dateEl = document.getElementById('supply-date');
@@ -1948,6 +2018,7 @@ function fillFormFromCourseState(state) {
   toggleRappel();
   sauvegarderPlanLocal();
   syncSupplyFromCourse(true);
+  scheduleLivePreview(true);
 }
 
 async function refreshCourses() {
@@ -2158,6 +2229,7 @@ function insertBankActivityByText(text) {
   activeActivityEditor = target;
   sauvegarderPlanLocal();
   syncSupplyFromCourse(true);
+  scheduleLivePreview();
 }
 function brancherAutocompleteActivite(row) {
   const editor = row.querySelector('.rich-editor'); const menu = row.querySelector('.autocomplete-menu'); let activeIndex = -1;
@@ -2167,7 +2239,7 @@ function brancherAutocompleteActivite(row) {
     if (!matches.length) { closeMenu(); return; }
     menu.innerHTML = matches.map((a,i) => `<div class="autocomplete-item${i===0?' active':''}" data-idx="${i}"><div>${escapeHtml(a.text)}</div></div>`).join('');
     menu.style.display = 'block'; activeIndex = 0;
-    [...menu.children].forEach((item, idx) => item.addEventListener('mousedown', (e) => { e.preventDefault(); editor.innerHTML = matches[idx].html || escapeHtml(matches[idx].text); closeMenu(); sauvegarderPlanLocal(); syncSupplyFromCourse(true); }));
+    [...menu.children].forEach((item, idx) => item.addEventListener('mousedown', (e) => { e.preventDefault(); editor.innerHTML = matches[idx].html || escapeHtml(matches[idx].text); closeMenu(); sauvegarderPlanLocal(); syncSupplyFromCourse(true); scheduleLivePreview(); sauvegarderPlanLocal(); syncSupplyFromCourse(true); }));
   }
   editor.addEventListener('input', () => openMenu(currentMatches()));
   editor.addEventListener('focus', () => openMenu(currentMatches()));
@@ -2403,12 +2475,17 @@ function buildSupplyWorkTextFromCourse() {
     if (!lines.length) return;
     parts.push(`${idx + 1}. ${lines[0]}`);
     for (let i = 1; i < lines.length; i++) parts.push(`   ${lines[i]}`);
-    parts.push('');
   });
   const devoir = document.getElementById('pas-devoir').checked ? '' : htmlVersTexteClassroom(document.getElementById('devoir').innerHTML).trim();
   const rappel = document.getElementById('pas-rappel').checked ? '' : htmlVersTexteClassroom(document.getElementById('rappel').innerHTML).trim();
-  if (devoir) parts.push('', 'Devoir : ' + devoir.replace(/\n+/g, '\n'));
-  if (rappel) parts.push('', 'Rappel : ' + rappel.replace(/\n+/g, '\n'));
+  if (devoir) {
+    if (parts.length) parts.push('');
+    parts.push('Devoir : ' + devoir.replace(/\n+/g, '\n'));
+  }
+  if (rappel) {
+    if (parts.length) parts.push('');
+    parts.push('Rappel : ' + rappel.replace(/\n+/g, '\n'));
+  }
   return parts.join('\n').trim();
 }
 function syncSupplyFromCourse(forceWork) {
@@ -2663,12 +2740,14 @@ function reinitialiser() {
         <line x1="3" y1="9" x2="21" y2="9"/>
         <line x1="9" y1="21" x2="9" y2="9"/>
       </svg>
-      <p>Remplissez le formulaire<br>et cliquez sur <em>Générer</em></p>
+      <p>Remplissez le formulaire<br>l’aperçu se met à jour automatiquement</p>
     </div>`;
   document.getElementById('btn-copy').style.display = 'none';
   document.getElementById('btn-reset').style.display = 'none';
   syncSupplyFromCourse(true);
   effacerPlanLocal();
+  resetLivePreviewEmojis();
+  scheduleLivePreview(true);
 }
 
 
@@ -2681,6 +2760,7 @@ if (reuseCourseSelectEl) reuseCourseSelectEl.addEventListener('change', (e) => {
 initDate();
 initActivites();
 restaurerPlanLocal();
+scheduleLivePreview(true);
 applySchoolSelection(getCurrentSchoolKey());
 refreshGoogleUi();
 renderBankList();
@@ -2691,13 +2771,13 @@ applySupplyDefaultsForCurrentUser(true);
 syncSupplyFromCourse(true);
 updateRoleBasedUi();
 setPlanMode('course');
-document.getElementById('devoir').addEventListener('input', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
-document.getElementById('rappel').addEventListener('input', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
-document.getElementById('pas-devoir').addEventListener('change', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
-document.getElementById('pas-rappel').addEventListener('change', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
-document.getElementById('num-cours').addEventListener('input', () => { syncSupplyFromCourse(true); });
-document.getElementById('date-cours').addEventListener('change', () => { syncSupplyFromCourse(true); });
-document.getElementById('activities-list').addEventListener('input', (e) => { if (e.target.classList.contains('rich-editor')) { sauvegarderPlanLocal(); syncSupplyFromCourse(true); } });
+document.getElementById('devoir').addEventListener('input', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); scheduleLivePreview(); });
+document.getElementById('rappel').addEventListener('input', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); scheduleLivePreview(); });
+document.getElementById('pas-devoir').addEventListener('change', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); scheduleLivePreview(); });
+document.getElementById('pas-rappel').addEventListener('change', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); scheduleLivePreview(); });
+document.getElementById('num-cours').addEventListener('input', () => { syncSupplyFromCourse(true); scheduleLivePreview(); });
+document.getElementById('date-cours').addEventListener('change', () => { syncSupplyFromCourse(true); scheduleLivePreview(true); });
+document.getElementById('activities-list').addEventListener('input', (e) => { if (e.target.classList.contains('rich-editor')) { sauvegarderPlanLocal(); syncSupplyFromCourse(true); scheduleLivePreview(); } });
 const supplyPanelHost = document.getElementById('left-plan-supply');
 const originalSupplyPanel = document.querySelector('#right-tab-supply .google-card');
 if (supplyPanelHost && originalSupplyPanel && !supplyPanelHost.hasChildNodes()) supplyPanelHost.appendChild(originalSupplyPanel);
