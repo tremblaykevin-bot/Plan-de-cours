@@ -1617,7 +1617,7 @@ async function generer() {
     try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', "Plan généré, mais la banque n'a pas pu être mise à jour : " + e.message, 'err'); }
   }
 
-  if (googleAccessToken && appSpreadsheetId) {
+  if (!suppressCourseAutoSave && googleAccessToken && appSpreadsheetId) {
     try {
       await saveCurrentCourseToBank();
       await refreshCourses();
@@ -2031,13 +2031,6 @@ async function deleteSelectedCourse() {
   const ok = window.confirm(`Effacer définitivement le cours « ${course.title} » ?`);
   if (!ok) return;
 
-  // Mise à jour locale immédiate — l'UI répond toujours, peu importe ce qui arrive côté Sheets
-  savedCourses = savedCourses.filter(c => c.id !== id);
-  if (select) select.value = '';
-  renderCourseOptions();
-  updateDeleteCourseButton();
-
-  // Synchronisation avec Google Sheets dans un try-catch pour éviter que l'UI reste bloquée
   try {
     await refreshSheetMetadata();
     const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(COURSES_SHEET+'!A2:M')}`);
@@ -2072,10 +2065,14 @@ async function deleteSelectedCourse() {
         }
       }
     }
+    savedCourses = savedCourses.filter(c => c.id !== id);
+    if (select) select.value = '';
+    renderCourseOptions();
     await refreshCourses();
+    updateDeleteCourseButton();
   } catch (e) {
-    console.error('Erreur lors de la suppression dans Google Sheets :', e);
-    alert('Le cours a été retiré de la liste, mais une erreur est survenue lors de la synchronisation avec Google Sheets. Veuillez recharger la page.');
+    console.error('Erreur lors de la suppression du cours :', e);
+    alert('Erreur lors de la suppression : ' + (e?.message || e));
   }
 }
 
