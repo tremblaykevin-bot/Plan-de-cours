@@ -6,6 +6,7 @@
 <title>Générateur de plan de cours Classroom — Cardinal-Roy</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
   :root {
     --red: #c8102e;
@@ -752,6 +753,9 @@
   .supply-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
   .btn-print-supply { border:none; border-radius:10px; padding:11px 14px; background:#7c1f24; color:#fff; font:600 0.92rem 'DM Sans',sans-serif; cursor:pointer; }
   .btn-print-supply:hover { background:#681a1e; }
+  .btn-pdf-supply { border:none; border-radius:10px; padding:11px 14px; background:#4a5568; color:#fff; font:600 0.92rem 'DM Sans',sans-serif; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+  .btn-pdf-supply:hover { background:#2d3748; }
+  .btn-pdf-supply:disabled { opacity:0.6; cursor:not-allowed; }
 
 
   .course-panel-header {
@@ -1014,6 +1018,10 @@
         </div>
                 <div class="supply-actions">
           <button class="btn-print-supply" type="button" onclick="printSupplyPlan()">Imprimer la planification de suppléance</button>
+          <button class="btn-pdf-supply" type="button" onclick="downloadSupplyPDF()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            Télécharger en PDF
+          </button>
           <button class="btn-secondary-soft" type="button" onclick="saveSupplyPlan()">Sauvegarder la planification de la suppléance</button>
         </div>
       </div>
@@ -2560,6 +2568,104 @@ function formatSupplyDateForPrint(value) {
   }
   return value;
 }
+async function downloadSupplyPDF() {
+  const btn = document.querySelector('.btn-pdf-supply');
+  const origContent = btn ? btn.innerHTML : '';
+  if (btn) { btn.innerHTML = '⏳ Génération…'; btn.disabled = true; }
+  try {
+    syncSupplyFromCourse(false);
+    const s = getSupplyState();
+    const dateStr = (s['supply-date'] || 'planification').replace(/\s+/g, '_');
+    const filename = `Suppléance_${dateStr}.pdf`;
+
+    // Réutilise exactement le même HTML que printSupplyPlan, sans le script d'impression
+    const workLines = (s['supply-work'] || '').split(/\n/).map(v => v.replace(/\s+$/,'')).filter((v, i, arr) => v || i < arr.length - 1);
+    const rulesLines = (s['supply-rules'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
+    const ratings = ['Excellente période','Bonne période','Période moyenne','Mauvaise période'];
+    const ratingHtml = ratings.map(r => `<div class="rating-row"><span class="box">☐</span><span>${escapeHtml(r)}</span></div>`).join('');
+    const workHtml = workLines.map(v => `<div class="work-line">${escapeHtml(v || ' ')}</div>`).join('');
+    const noteHtml = escapeHtml(s['supply-note'] || '');
+    const logoTag = getCurrentSchoolLogoDataUri() ? `<img src="${getCurrentSchoolLogoDataUri()}" alt="${escapeHtml(getCurrentSchoolName())}">` : '';
+
+    const css = `
+      body { margin:0; font: 14px/1.35 Arial, Helvetica, sans-serif; color:#111; }
+      .page { width:100%; box-sizing:border-box; }
+      .top { display:grid; grid-template-columns:1.4fr 1fr; column-gap:26px; align-items:start; }
+      .brand { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:18px; margin-top:4px; }
+      .brand img { height:58px; width:auto; }
+      .title { font-weight:700; font-size:18px; text-align:center; align-self:center; justify-self:center; width:100%; }
+      .meta-right { font-size:13px; }
+      .meta-right .row { display:flex; justify-content:flex-end; gap:8px; margin-bottom:6px; }
+      .line { display:inline-block; min-width:130px; border-bottom:1px solid #111; }
+      .line.short { min-width:70px; }
+      .middle { display:grid; grid-template-columns:1.2fr 0.9fr; gap:26px; margin-top:12px; }
+      .label-line { margin:4px 0; font-size:13px; }
+      .section-title { font-size:15px; font-weight:700; text-decoration:underline; margin:14px 0 8px; }
+      .line-fill { min-height:18px; border-bottom:1px solid #111; margin-bottom:7px; padding:0 2px 2px; }
+      .rating-box { border:1px solid #111; padding:10px 12px; }
+      .rating-title { font-size:14px; text-decoration:underline; margin-bottom:8px; }
+      .rating-row { display:flex; align-items:center; gap:10px; margin:12px 0; font-size:13px; }
+      .box { display:inline-block; width:16px; text-align:center; font-size:14px; }
+      .work-line { min-height:17px; margin-bottom:5px; white-space:pre-wrap; font-size:13px; }
+      .rules { margin-top:10px; font-size:13px; }
+      .rules ul { margin:6px 0 0 20px; }
+      .rules li { margin:6px 0; }
+      .note-box { border:1px solid #111; padding:8px 10px; margin-top:14px; text-align:center; min-height:38px; font-size:13px; }
+      .comments-title { display:inline-block; background:#fff16a; font-weight:700; text-decoration:underline; padding:1px 2px; margin-top:14px; font-size:13px; }
+      .footer-line { margin-top:12px; text-align:center; font-weight:700; font-size:13px; }
+      .footer-line span { display:inline-block; min-width:200px; border-bottom:1px solid #111; vertical-align:middle; }`;
+
+    const bodyHtml = `
+      <div class="top">
+        <div class="brand">${logoTag}<div class="title">Planification de la suppléance</div></div>
+        <div class="meta-right">
+          <div class="row"><strong>Date :</strong> <span class="line">${escapeHtml(formatSupplyDateForPrint(s['supply-date']))}</span></div>
+          <div class="row"><strong>Période :</strong> <span class="line short">${escapeHtml(s['supply-period'])}</span></div>
+          <div style="height:10px"></div>
+          <div class="row"><strong>Enseignant absent :</strong> <span class="line">${escapeHtml(s['supply-teacher'])}</span></div>
+          <div class="row"><strong>Suppléant(e) :</strong> <span class="line">${escapeHtml(s['supply-replacement'])}</span></div>
+        </div>
+      </div>
+      <div class="middle">
+        <div>
+          <div class="label-line"><strong>Matière :</strong> ${escapeHtml(s['supply-subject'])}</div>
+          <div class="label-line"><strong>Niveau :</strong> ${escapeHtml(s['supply-level'])}</div>
+          <div class="label-line"><strong>Groupe :</strong> ${escapeHtml(s['supply-group'])}</div>
+          <div class="label-line"><strong>Local :</strong> ${escapeHtml(s['supply-room'])}</div>
+          <div class="section-title">Élève(s) absent(s) :</div>
+          ${supplyLinesHtml(4, [])}
+        </div>
+        <div><div class="rating-box"><div class="rating-title">Période en général</div>${ratingHtml}</div></div>
+      </div>
+      <div class="section-title">Travail à faire</div>
+      ${workHtml}
+      <div class="rules"><strong>Règles :</strong><ul>${rulesLines.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul></div>
+      <div class="note-box">${noteHtml || '&nbsp;'}</div>
+      <div class="comments-title">Commentaires sur la période :</div>
+      ${supplyLinesHtml(3, [])}
+      <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>`;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;width:750px;';
+    wrapper.innerHTML = `<style>${css}</style><div class="page">${bodyHtml}</div>`;
+    document.body.appendChild(wrapper);
+
+    await html2pdf().set({
+      margin: [0.45, 0.45, 0.45, 0.45],
+      filename,
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+    }).from(wrapper).save();
+
+    document.body.removeChild(wrapper);
+  } catch(e) {
+    console.error('PDF suppléance :', e);
+    alert('Erreur lors de la génération du PDF : ' + (e?.message || e));
+  } finally {
+    if (btn) { btn.innerHTML = origContent; btn.disabled = false; }
+  }
+}
+
 function printSupplyPlan() {
   syncSupplyFromCourse(false);
   const s = getSupplyState();
