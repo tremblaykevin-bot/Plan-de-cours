@@ -117,17 +117,75 @@
     color:var(--dark);
     background:#fff;
   }
+  .supply-reuse-row {
+    display:flex;
+    align-items:flex-end;
+    gap:10px;
+  }
+  .supply-reuse-row .field-group {
+    flex:1 1 auto;
+    margin-bottom:0 !important;
+  }
+  .btn-delete-supply {
+    display:none;
+    border:none;
+    border-radius:10px;
+    padding:10px 12px;
+    background: var(--red);
+    color:#fff;
+    font:600 0.84rem 'DM Sans', sans-serif;
+    cursor:pointer;
+    line-height:1.1;
+    white-space:nowrap;
+  }
+  .btn-delete-supply.show { display:inline-block; }
+
   @media (max-width: 980px) {
     header {
+      display:grid;
       grid-template-columns: 1fr;
       justify-items: center;
+      align-items: center;
       text-align: center;
-      row-gap: 10px;
+      row-gap: 12px;
+      padding: 14px 16px;
+      min-height: auto;
     }
-    #school-logo { grid-column:auto; justify-self:center; }
-    header h1 { grid-column:auto; justify-self:center; min-height:auto; }
-    .school-switcher-ui { grid-column:auto; justify-self:center; align-items:center; min-height:auto; }
-    .school-select { width:min(320px, calc(100vw - 48px)); }
+    #school-logo {
+      position: static;
+      top: auto;
+      left: auto;
+      transform: none;
+      width: min(78vw, 280px) !important;
+      max-width: min(78vw, 280px) !important;
+      height: auto !important;
+      max-height: 64px;
+      margin: 0 auto;
+    }
+    header h1 {
+      order: 2;
+      min-height:auto;
+      justify-self:center;
+      font-size: clamp(1.45rem, 6vw, 2.3rem);
+      line-height: 1.08;
+      padding: 0 8px;
+    }
+    .school-switcher-ui {
+      position: static;
+      right: auto;
+      top: auto;
+      transform: none;
+      order: 3;
+      align-items:center;
+      justify-self:center;
+      width: 100%;
+    }
+    .school-select-wrap {
+      position: static;
+      margin-top: 8px;
+      width: min(360px, calc(100vw - 32px));
+    }
+    .school-select { width:100%; }
   }
 
 
@@ -142,7 +200,12 @@
   }
   @media (max-width: 780px) {
     main { grid-template-columns: 1fr; }
-    header { padding: 16px 20px; }
+    header { padding: 14px 16px; }
+    .supply-reuse-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .btn-delete-supply.show { width: 100%; }
   }
 
   .panel {
@@ -851,9 +914,12 @@
     <div class="right-tab-panel" id="right-tab-supply">
       <h2>Planification suppléance</h2>
       <div class="google-card">
-        <div class="field-group" style="margin-bottom:16px;">
-          <label for="reuse-supply-select">Réutiliser une planification sauvegardée</label>
-          <select id="reuse-supply-select"><option value="">Choisir une planification</option></select>
+        <div class="supply-reuse-row" style="margin-bottom:16px;">
+          <div class="field-group">
+            <label for="reuse-supply-select">Réutiliser une planification sauvegardée</label>
+            <select id="reuse-supply-select"><option value="">Choisir une planification</option></select>
+          </div>
+          <button class="btn-delete-supply" id="btn-delete-supply" type="button" onclick="deleteSelectedSupplyPlan()">Effacer</button>
         </div>
         <div class="supply-grid">
           <div class="field-group"><label for="supply-date">Date</label><input id="supply-date" type="text" placeholder="27 mars 2025"></div>
@@ -936,6 +1002,7 @@ let googleTokenClient = null;
 let googleAccessToken = localStorage.getItem('g_access_token') || '';
 let googleUser = null;
 let appSpreadsheetId = localStorage.getItem('plan_cours_sheet_id') || '';
+let supplyPlansSheetId = null;
 let bankActivities = [];
 let savedCourses = [];
 let classroomCourses = [];
@@ -1511,11 +1578,20 @@ function refreshGoogleUi() {
   const sheetPill = document.getElementById('sheet-pill');
   if (appSpreadsheetId) { sheetPill.style.display = ''; sheetPill.textContent = 'Sheet connecté'; } else sheetPill.style.display = 'none';
 }
+async function refreshSheetMetadata() {
+  if (!googleAccessToken || !appSpreadsheetId) return;
+  const meta = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}?fields=sheets(properties(sheetId,title))`);
+  const sheets = meta.sheets || [];
+  const supplySheet = sheets.find(s => s.properties?.title === SUPPLY_PLANS_SHEET);
+  supplyPlansSheetId = supplySheet?.properties?.sheetId ?? null;
+}
+
 async function ensureOnlineStorage() {
   if (!googleAccessToken) return;
   if (!appSpreadsheetId) appSpreadsheetId = await findExistingSpreadsheetId();
   if (!appSpreadsheetId) appSpreadsheetId = await createAppSpreadsheet();
   localStorage.setItem('plan_cours_sheet_id', appSpreadsheetId);
+  await refreshSheetMetadata();
   await ensureSheetStructure();
   await syncLastCourseNumberFromSheet();
 }
@@ -1535,8 +1611,10 @@ async function createAppSpreadsheet() {
   return id;
 }
 async function ensureSheetStructure() {
-  const meta = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}?fields=sheets(properties(sheetId,title))`);
-  const titles = new Set((meta.sheets || []).map(s => s.properties?.title).filter(Boolean));
+  let meta = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}?fields=sheets(properties(sheetId,title))`);
+  let sheetsMeta = meta.sheets || [];
+  supplyPlansSheetId = (sheetsMeta.find(s => s.properties?.title === SUPPLY_PLANS_SHEET)?.properties?.sheetId) ?? null;
+  const titles = new Set(sheetsMeta.map(s => s.properties?.title).filter(Boolean));
   const requests = [];
   if (!titles.has(ACTIVITES_SHEET)) requests.push({ addSheet: { properties: { title: ACTIVITES_SHEET } } });
   if (!titles.has(CONFIG_SHEET)) requests.push({ addSheet: { properties: { title: CONFIG_SHEET } } });
@@ -1544,6 +1622,9 @@ async function ensureSheetStructure() {
   if (!titles.has(SUPPLY_PLANS_SHEET)) requests.push({ addSheet: { properties: { title: SUPPLY_PLANS_SHEET } } });
   if (requests.length) {
     await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ requests }) });
+    meta = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}?fields=sheets(properties(sheetId,title))`);
+    sheetsMeta = meta.sheets || [];
+    supplyPlansSheetId = (sheetsMeta.find(s => s.properties?.title === SUPPLY_PLANS_SHEET)?.properties?.sheetId) ?? null;
   }
 
   const cfg = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(CONFIG_SHEET+'!A1:B10')}`);
@@ -1565,6 +1646,7 @@ async function ensureSheetStructure() {
   if (!(supplyPlansHeader.values || []).length) {
     await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(SUPPLY_PLANS_SHEET+'!A1:D1')}?valueInputOption=USER_ENTERED`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ values:[['id','title','updated_at','payload_json']] }) });
   }
+  await refreshSheetMetadata();
 }
 async function syncLastCourseNumberFromSheet() {
   try {
@@ -1681,6 +1763,7 @@ async function refreshSupplyPlans() {
     renderSupplyPlanOptions();
     return;
   }
+  await refreshSheetMetadata();
   const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(SUPPLY_PLANS_SHEET+'!A2:D')}`);
   savedSupplyPlans = (data.values || []).map((r, idx) => {
     let payload = {};
@@ -1695,6 +1778,31 @@ function renderSupplyPlanOptions() {
   const select = document.getElementById('reuse-supply-select');
   if (!select) return;
   select.innerHTML = '<option value="">Choisir une planification</option>' + savedSupplyPlans.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)}</option>`).join('');
+  updateDeleteSupplyButton();
+}
+
+function updateDeleteSupplyButton() {
+  const select = document.getElementById('reuse-supply-select');
+  const btn = document.getElementById('btn-delete-supply');
+  if (!select || !btn) return;
+  btn.classList.toggle('show', !!select.value);
+}
+
+async function deleteSelectedSupplyPlan() {
+  const select = document.getElementById('reuse-supply-select');
+  const id = select?.value || '';
+  if (!id || !googleAccessToken || !appSpreadsheetId) return;
+  const plan = savedSupplyPlans.find(p => p.id === id);
+  if (!plan?.rowNumber) return;
+  const ok = window.confirm(`Effacer définitivement la planification « ${plan.title} » ?`);
+  if (!ok) return;
+  await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ requests:[{ deleteDimension:{ range:{ sheetId: supplyPlansSheetId, dimension:'ROWS', startIndex: plan.rowNumber - 1, endIndex: plan.rowNumber } } }] })
+  });
+  if (select) select.value = '';
+  await refreshSupplyPlans();
 }
 
 function getSupplyPlanPayload() {
@@ -2319,7 +2427,7 @@ document.getElementById('num-cours').addEventListener('input', () => { syncSuppl
 document.getElementById('date-cours').addEventListener('change', () => { syncSupplyFromCourse(true); });
 document.getElementById('activities-list').addEventListener('input', (e) => { if (e.target.classList.contains('rich-editor')) { sauvegarderPlanLocal(); syncSupplyFromCourse(true); } });
 const reuseSupplySelectEl = document.getElementById('reuse-supply-select');
-if (reuseSupplySelectEl) reuseSupplySelectEl.addEventListener('change', (e) => { if (e.target.value) loadSavedSupplyPlan(e.target.value); });
+if (reuseSupplySelectEl) reuseSupplySelectEl.addEventListener('change', (e) => { updateDeleteSupplyButton(); if (e.target.value) loadSavedSupplyPlan(e.target.value); });
 if (googleAccessToken) { afterGoogleLogin().catch(err => { console.error(err); setStatus('google-status', 'Session expirée. Reconnectez-vous à Google.', 'err'); }); }
 </script>
 
