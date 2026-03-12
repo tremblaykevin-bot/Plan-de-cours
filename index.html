@@ -7,6 +7,8 @@
   <link rel="icon" href="favicon.ico" type="image/x-icon">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --red: #c8102e;
@@ -723,7 +725,14 @@
   .bank-box { margin-top:18px; border-top:1px solid #ece7e2; padding-top:14px; }
   .bank-list { max-height:180px; overflow:auto; border:1px solid #e7e1da; border-radius:10px; background:#fff; }
   .bank-item { padding:10px 12px; border-bottom:1px solid #f0ece8; cursor:pointer; }
-  .bank-item:last-child { border-bottom:0; } .bank-item:hover { background:#f8f5f2; }
+  .bank-item:last-child { border-bottom:0; }
+  .bank-item:hover { background:#f8f5f2; }
+  .bank-item.selected { background:#fff0f2; border-left:3px solid var(--red); padding-left:9px; }
+  .bank-search { width:100%; padding:8px 12px; border:1.5px solid var(--border); border-radius:7px; font:400 0.88rem 'DM Sans',sans-serif; margin-bottom:8px; outline:none; }
+  .bank-search:focus { border-color:var(--red); }
+  .btn-delete-bank { border:none; border-radius:10px; padding:10px 12px; background:#e5e0db; color:#aaa; font:600 0.84rem 'DM Sans',sans-serif; cursor:not-allowed; white-space:nowrap; transition:background 0.15s,color 0.15s; }
+  .btn-delete-bank.active { background:var(--red); color:#fff; cursor:pointer; }
+  .btn-delete-bank.active:hover { background:#a50d24; }
   .bank-meta { font-size:.74rem; color:#857a72; }
   .activity-row { position:relative; transition:transform .16s ease, box-shadow .16s ease, background-color .16s ease; }
   .activity-row.dragging { opacity:.7; background:#fbf6f2; box-shadow:0 8px 24px rgba(0,0,0,.08); }
@@ -756,6 +765,20 @@
   .btn-pdf-supply { border:none; border-radius:10px; padding:11px 14px; background:#4a5568; color:#fff; font:600 0.92rem 'DM Sans',sans-serif; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
   .btn-pdf-supply:hover { background:#2d3748; }
   .btn-pdf-supply:disabled { opacity:0.6; cursor:not-allowed; }
+  .pdf-toast {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:8px 12px;
+    background:#e6f4ea;
+    border:1px solid #a8d5b5;
+    border-radius:10px;
+    color:#1e6b3a;
+    font-size:0.85rem;
+    font-weight:600;
+    animation:fadeInToast 0.25s ease;
+  }
+  @keyframes fadeInToast { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
 
 
   .course-panel-header {
@@ -975,9 +998,11 @@
       <div class="google-card">
         <div class="google-row" style="margin-bottom:10px;">
           <button class="btn-secondary-soft" onclick="refreshBank()">Actualiser la banque</button>
+          <button class="btn-delete-bank" id="btn-delete-bank" type="button" onclick="deleteSelectedBankActivity()">Effacer</button>
           <span class="auth-pill" id="sheet-pill" style="display:none;"></span>
         </div>
         <div class="google-status" id="bank-status"></div>
+        <input class="bank-search" id="bank-search" type="text" placeholder="🔍 Rechercher une activité…" oninput="renderBankList()">
         <div class="bank-list" id="bank-list"></div>
       </div>
     </div>
@@ -994,8 +1019,8 @@
         </div>
         <div class="supply-grid">
           <div class="field-group"><label for="supply-date">Date de l'absence prévue</label><div class="date-input-wrapper" id="supply-date-wrapper"><input type="text" id="supply-date" readonly title="Cliquez pour choisir une date"><div class="date-arrows"><button type="button" class="date-arrow" id="supply-date-prev">▲</button><button type="button" class="date-arrow" id="supply-date-next">▼</button></div><div id="supply-date-picker-popup" class="date-picker-popup" style="display:none;"></div></div></div>
-          <div class="field-group"><label for="supply-period">Période</label><input id="supply-period" type="text" placeholder="Entrez la période"></div>
-          <div class="field-group"><label for="supply-group">Groupe</label><input id="supply-group" type="text" placeholder="Entrez votre groupe"></div>
+          <div class="field-group"><label for="supply-period">Période(s)</label><input id="supply-period" type="text" placeholder="Entrez la ou les périodes"></div>
+          <div class="field-group"><label for="supply-group">Groupe(s)</label><input id="supply-group" type="text" placeholder="Entrez le ou les groupes"></div>
           <div class="field-group"><label for="supply-subject">Matière</label><input id="supply-subject" type="text" placeholder="Entrez votre matière"></div>
           <div class="field-group"><label for="supply-room">Local</label><input id="supply-room" type="text" placeholder="Entrez votre local"></div>
           <div class="field-group"><label for="supply-teacher">Enseignant absent</label><input id="supply-teacher" type="text" placeholder="Prénom Nom"></div>
@@ -1013,6 +1038,10 @@
           <div class="field-group supply-wide">
             <label for="supply-note">Note particulière</label>
             <textarea id="supply-note" class="supply-textarea small" placeholder="Consigne ou note importante pour la suppléance"></textarea>
+          </div>
+          <div class="field-group supply-wide">
+            <label for="supply-links">Liens URL à fournir au suppléant</label>
+            <textarea id="supply-links" class="supply-textarea small" placeholder="Un lien par ligne (ex: https://...)"></textarea>
           </div>
           <div class="field-group"><label for="supply-return">Laisser le rapport</label><input id="supply-return" type="text" placeholder="au local / au pigeonnier / au bureau"></div>
         </div>
@@ -1109,6 +1138,7 @@ let savedSupplyPlans = [];
 let latestGeneratedText = '';
 let latestGeneratedHtml = '';
 let activeActivityEditor = null;
+let selectedBankText = null;
 const SUPPLY_RULES_DEFAULT = [
   "Pas de sortie aux toilettes ou pour aller boire de l’eau",
   "Pas d’appareils électroniques",
@@ -2257,10 +2287,27 @@ async function saveCurrentCourseToBank() {
 
 function renderBankList() {
   const box = document.getElementById('bank-list'); if (!box) return;
-  if (!bankActivities.length) { box.innerHTML = '<div class="bank-item">Aucune activité enregistrée.</div>'; return; }
-  box.innerHTML = bankActivities.map(a => `<div class="bank-item" onclick="insertBankActivityByText(${JSON.stringify(a.text)})"><div>${escapeHtml(a.text)}</div></div>`).join('');
+  const q = (document.getElementById('bank-search')?.value || '').trim().toLowerCase();
+  const filtered = q
+    ? bankActivities.filter(a => a.normalized.includes(q) || (a.text || '').toLowerCase().includes(q))
+    : bankActivities;
+  if (!filtered.length) {
+    box.innerHTML = `<div class="bank-item">${bankActivities.length ? 'Aucun résultat.' : 'Aucune activité enregistrée.'}</div>`;
+    return;
+  }
+  box.innerHTML = filtered.map(a => {
+    const sel = a.text === selectedBankText ? ' selected' : '';
+    return `<div class="bank-item${sel}" onclick="selectBankActivity(${JSON.stringify(a.text)})">${escapeHtml(a.text)}</div>`;
+  }).join('');
 }
-function insertBankActivityByText(text) {
+function selectBankActivity(text) {
+  selectedBankText = text;
+  // Update delete button state
+  const delBtn = document.getElementById('btn-delete-bank');
+  if (delBtn) delBtn.classList.toggle('active', !!text);
+  // Re-render to show selection highlight
+  renderBankList();
+  // Insert into first empty activity field
   const entry = bankActivities.find(a => a.text === text);
   const html = entry?.html || escapeHtml(text);
   let target = [...document.querySelectorAll('.activity-row .rich-editor')].find(ed => !ed.innerText.trim());
@@ -2273,6 +2320,33 @@ function insertBankActivityByText(text) {
   target.focus();
   activeActivityEditor = target;
   sauvegarderPlanLocal();
+}
+function insertBankActivityByText(text) {
+  selectBankActivity(text);
+}
+async function deleteSelectedBankActivity() {
+  if (!selectedBankText) return;
+  if (!googleAccessToken || !appSpreadsheetId) {
+    alert('Connectez-vous à Google pour supprimer une activité de la banque.');
+    return;
+  }
+  const entry = bankActivities.find(a => a.text === selectedBankText);
+  if (!entry?.rowNumber) return;
+  const ok = window.confirm(`Supprimer définitivement « ${entry.text} » de la banque ?`);
+  if (!ok) return;
+  try {
+    await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ requests: [{ deleteDimension: { range: { dimension: 'ROWS', startIndex: entry.rowNumber - 1, endIndex: entry.rowNumber } } }] })
+    });
+    selectedBankText = null;
+    const delBtn = document.getElementById('btn-delete-bank');
+    if (delBtn) delBtn.classList.remove('active');
+    await refreshBank();
+  } catch(e) {
+    console.error('Erreur suppression activité :', e);
+    alert('Erreur lors de la suppression : ' + (e?.message || e));
+  }
 }
 function brancherAutocompleteActivite(row) {
   const editor = row.querySelector('.rich-editor'); const menu = row.querySelector('.autocomplete-menu'); let activeIndex = -1;
@@ -2546,7 +2620,7 @@ function parseFrenchDateStr(value) {
   return new Date(Number(m[3]), idx, Number(m[1]));
 }
 function getSupplyState() {
-  const ids = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-work','supply-rules','supply-note','supply-return'];
+  const ids = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-work','supply-rules','supply-note','supply-return','supply-links'];
   const out = {};
   ids.forEach(id => out[id] = document.getElementById(id)?.value || '');
   return out;
@@ -2572,91 +2646,184 @@ async function downloadSupplyPDF() {
   const btn = document.querySelector('.btn-pdf-supply');
   const origContent = btn ? btn.innerHTML : '';
   if (btn) { btn.innerHTML = '⏳ Génération…'; btn.disabled = true; }
+
+  let iframe = null;
   try {
     syncSupplyFromCourse(false);
     const s = getSupplyState();
     const dateStr = (s['supply-date'] || 'planification').replace(/\s+/g, '_');
     const filename = `Suppléance_${dateStr}.pdf`;
 
-    // Réutilise exactement le même HTML que printSupplyPlan, sans le script d'impression
+    // Build EXACTLY the same document as printSupplyPlan, minus the auto-print script
+    const absentLines = [];
     const workLines = (s['supply-work'] || '').split(/\n/).map(v => v.replace(/\s+$/,'')).filter((v, i, arr) => v || i < arr.length - 1);
     const rulesLines = (s['supply-rules'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
+    const commentLines = [];
     const ratings = ['Excellente période','Bonne période','Période moyenne','Mauvaise période'];
     const ratingHtml = ratings.map(r => `<div class="rating-row"><span class="box">☐</span><span>${escapeHtml(r)}</span></div>`).join('');
     const workHtml = workLines.map(v => `<div class="work-line">${escapeHtml(v || ' ')}</div>`).join('');
     const noteHtml = escapeHtml(s['supply-note'] || '');
-    const logoTag = getCurrentSchoolLogoDataUri() ? `<img src="${getCurrentSchoolLogoDataUri()}" alt="${escapeHtml(getCurrentSchoolName())}">` : '';
+    const linksLines = (s['supply-links'] || '').split(/\n/).map(v => v.trim()).filter(Boolean);
+    const linksHtml = linksLines.length ? `<div class="links-section"><strong>Liens utiles :</strong><ul>${linksLines.map(l => `<li><a href="${escapeHtml(l)}">${escapeHtml(l)}</a></li>`).join('')}</ul></div>` : '';
+    const logoSrc = getCurrentSchoolLogoDataUri();
+    const logoTag = logoSrc ? `<img src="${logoSrc}" alt="${escapeHtml(getCurrentSchoolName())}">` : '';
 
-    const css = `
-      body { margin:0; font: 14px/1.35 Arial, Helvetica, sans-serif; color:#111; }
-      .page { width:100%; box-sizing:border-box; }
-      .top { display:grid; grid-template-columns:1.4fr 1fr; column-gap:26px; align-items:start; }
-      .brand { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:18px; margin-top:4px; }
-      .brand img { height:58px; width:auto; }
-      .title { font-weight:700; font-size:18px; text-align:center; align-self:center; justify-self:center; width:100%; }
-      .meta-right { font-size:13px; }
-      .meta-right .row { display:flex; justify-content:flex-end; gap:8px; margin-bottom:6px; }
+    // Same doc as print but no @page/print script, and table layout instead of grid
+    // (html2canvas doesn't support CSS Grid — tables render identically)
+    const fullDocHtml = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { margin:0.45in; font:15px/1.35 Arial,Helvetica,sans-serif; color:#111; background:#fff; width:7.6in; }
+      .top-table { width:100%; border-collapse:collapse; margin-bottom:0; }
+      .top-table td { vertical-align:top; }
+      .brand-cell { width:58%; padding-right:20px; }
+      .brand-inner { display:flex; align-items:center; gap:18px; margin-top:4px; }
+      .brand-inner img { height:58px; width:auto; flex-shrink:0; }
+      .plan-title { font-weight:700; font-size:19px; text-align:center; flex:1; }
+      .meta-cell { width:42%; }
+      .meta-row { display:flex; justify-content:flex-end; gap:8px; margin-bottom:6px; font-size:14px; }
       .line { display:inline-block; min-width:130px; border-bottom:1px solid #111; }
-      .line.short { min-width:70px; }
-      .middle { display:grid; grid-template-columns:1.2fr 0.9fr; gap:26px; margin-top:12px; }
-      .label-line { margin:4px 0; font-size:13px; }
-      .section-title { font-size:15px; font-weight:700; text-decoration:underline; margin:14px 0 8px; }
-      .line-fill { min-height:18px; border-bottom:1px solid #111; margin-bottom:7px; padding:0 2px 2px; }
-      .rating-box { border:1px solid #111; padding:10px 12px; }
-      .rating-title { font-size:14px; text-decoration:underline; margin-bottom:8px; }
-      .rating-row { display:flex; align-items:center; gap:10px; margin:12px 0; font-size:13px; }
-      .box { display:inline-block; width:16px; text-align:center; font-size:14px; }
-      .work-line { min-height:17px; margin-bottom:5px; white-space:pre-wrap; font-size:13px; }
-      .rules { margin-top:10px; font-size:13px; }
-      .rules ul { margin:6px 0 0 20px; }
-      .rules li { margin:6px 0; }
-      .note-box { border:1px solid #111; padding:8px 10px; margin-top:14px; text-align:center; min-height:38px; font-size:13px; }
-      .comments-title { display:inline-block; background:#fff16a; font-weight:700; text-decoration:underline; padding:1px 2px; margin-top:14px; font-size:13px; }
-      .footer-line { margin-top:12px; text-align:center; font-weight:700; font-size:13px; }
-      .footer-line span { display:inline-block; min-width:200px; border-bottom:1px solid #111; vertical-align:middle; }`;
-
-    const bodyHtml = `
-      <div class="top">
-        <div class="brand">${logoTag}<div class="title">Planification de la suppléance</div></div>
-        <div class="meta-right">
-          <div class="row"><strong>Date :</strong> <span class="line">${escapeHtml(formatSupplyDateForPrint(s['supply-date']))}</span></div>
-          <div class="row"><strong>Période :</strong> <span class="line short">${escapeHtml(s['supply-period'])}</span></div>
-          <div style="height:10px"></div>
-          <div class="row"><strong>Enseignant absent :</strong> <span class="line">${escapeHtml(s['supply-teacher'])}</span></div>
-          <div class="row"><strong>Suppléant(e) :</strong> <span class="line">${escapeHtml(s['supply-replacement'])}</span></div>
-        </div>
-      </div>
-      <div class="middle">
-        <div>
+      .line.short { min-width:75px; }
+      .middle-table { width:100%; border-collapse:collapse; margin-top:12px; }
+      .middle-table td { vertical-align:top; }
+      .left-cell { width:57%; padding-right:22px; }
+      .right-cell { width:43%; }
+      .label-line { margin:4px 0; font-size:14px; }
+      .section-title { font-size:16px; font-weight:700; text-decoration:underline; margin:14px 0 8px; }
+      .line-fill { min-height:20px; border-bottom:1px solid #111; margin-bottom:7px; padding:0 2px 2px; }
+      .rating-box { border:1px solid #111; padding:12px 14px; }
+      .rating-title { font-size:15px; text-decoration:underline; margin-bottom:10px; }
+      .rating-row { display:flex; align-items:center; gap:10px; margin:13px 0; font-size:14px; }
+      .box { display:inline-block; width:18px; text-align:center; font-size:16px; }
+      .work-line { min-height:18px; margin-bottom:6px; white-space:pre-wrap; font-size:14px; }
+      .rules { margin-top:10px; font-size:14px; }
+      .rules ul { margin:6px 0 0 22px; list-style:disc; }
+      .rules li { margin:7px 0; }
+      .note-box { border:1px solid #111; padding:8px 10px; margin-top:18px; text-align:center; min-height:42px; font-size:14px; }
+      .comments-title { display:inline-block; background:#fff16a; font-weight:700; text-decoration:underline; padding:1px 2px; margin-top:18px; font-size:14px; }
+      .footer-line { margin-top:14px; text-align:center; font-weight:700; font-size:14px; }
+      .footer-line span { display:inline-block; min-width:210px; border-bottom:1px solid #111; vertical-align:middle; }
+      .links-section { margin-top:14px; font-size:14px; }
+      .links-section ul { margin:6px 0 0 22px; list-style:disc; }
+      .links-section li { margin:5px 0; }
+      .links-section a { color:#0000ee; word-break:break-all; }
+    </style></head><body>
+      <table class="top-table"><tr>
+        <td class="brand-cell"><div class="brand-inner">${logoTag}<div class="plan-title">Planification de la suppléance</div></div></td>
+        <td class="meta-cell">
+          <div class="meta-row"><strong>Date :</strong> <span class="line">${escapeHtml(formatSupplyDateForPrint(s['supply-date']))}</span></div>
+          <div class="meta-row"><strong>Période(s) :</strong> <span class="line short">${escapeHtml(s['supply-period'])}</span></div>
+          <div style="height:12px"></div>
+          <div class="meta-row"><strong>Enseignant absent :</strong> <span class="line">${escapeHtml(s['supply-teacher'])}</span></div>
+          <div class="meta-row"><strong>Suppléant(e) :</strong> <span class="line">${escapeHtml(s['supply-replacement'])}</span></div>
+        </td>
+      </tr></table>
+      <table class="middle-table"><tr>
+        <td class="left-cell">
           <div class="label-line"><strong>Matière :</strong> ${escapeHtml(s['supply-subject'])}</div>
           <div class="label-line"><strong>Niveau :</strong> ${escapeHtml(s['supply-level'])}</div>
-          <div class="label-line"><strong>Groupe :</strong> ${escapeHtml(s['supply-group'])}</div>
+          <div class="label-line"><strong>Groupe(s) :</strong> ${escapeHtml(s['supply-group'])}</div>
           <div class="label-line"><strong>Local :</strong> ${escapeHtml(s['supply-room'])}</div>
           <div class="section-title">Élève(s) absent(s) :</div>
-          ${supplyLinesHtml(4, [])}
-        </div>
-        <div><div class="rating-box"><div class="rating-title">Période en général</div>${ratingHtml}</div></div>
-      </div>
+          ${supplyLinesHtml(4, absentLines)}
+        </td>
+        <td class="right-cell">
+          <div class="rating-box"><div class="rating-title">Période en général</div>${ratingHtml}</div>
+        </td>
+      </tr></table>
       <div class="section-title">Travail à faire</div>
       ${workHtml}
       <div class="rules"><strong>Règles :</strong><ul>${rulesLines.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul></div>
       <div class="note-box">${noteHtml || '&nbsp;'}</div>
+      ${linksHtml}
       <div class="comments-title">Commentaires sur la période :</div>
-      ${supplyLinesHtml(3, [])}
-      <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>`;
+      ${supplyLinesHtml(3, commentLines)}
+      <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>
+    </body></html>`;
 
-    const fullHtml = `<style>${css}</style><div class="page">${bodyHtml}</div>`;
+    // ── Write into a hidden iframe so CSS is in <head> and layout is correct ──
+    iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:7.6in;height:11in;border:none;visibility:hidden;';
+    document.body.appendChild(iframe);
+    await new Promise(resolve => {
+      iframe.onload = resolve;
+      const d = iframe.contentDocument || iframe.contentWindow.document;
+      // Remove body margin — jsPDF adds 0.45in margins itself when placing the image
+      const docNoMargin = fullDocHtml.replace('body { margin:0.45in;', 'body { margin:0;');
+      d.open(); d.write(docNoMargin); d.close();
+    });
+    // Let layout fully paint
+    await new Promise(r => setTimeout(r, 350));
 
-    await html2pdf().set({
-      margin: [0.45, 0.45, 0.45, 0.45],
-      filename,
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-    }).from(fullHtml, 'string').save();
+    const iDoc = iframe.contentDocument || iframe.contentWindow.document;
+    const iBody = iDoc.body;
+
+    // ── Capture with html2canvas ──────────────────────────────────────────────
+    const H2C = window.html2canvas;
+    if (!H2C) throw new Error('html2canvas non disponible — vérifiez votre connexion internet');
+    const canvas = await H2C(iBody, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      width: iBody.scrollWidth,
+      height: iBody.scrollHeight,
+      windowWidth: iBody.scrollWidth,
+      windowHeight: iBody.scrollHeight,
+    });
+
+    // ── Build PDF letter 8.5×11 with 0.45in margins ──────────────────────────
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!JsPDF) throw new Error('jsPDF non disponible — vérifiez votre connexion internet');
+    const pdf = new JsPDF({ orientation: 'portrait', unit: 'in', format: 'letter' });
+    const margin = 0.45;
+    const pageW = pdf.internal.pageSize.getWidth();   // 8.5
+    const pageH = pdf.internal.pageSize.getHeight();  // 11
+    const imgW = pageW - 2 * margin;                  // 7.6
+    const imgH = (canvas.height / canvas.width) * imgW;
+    const imgData = canvas.toDataURL('image/jpeg', 0.97);
+    if (imgH <= pageH - 2 * margin) {
+      pdf.addImage(imgData, 'JPEG', margin, margin, imgW, imgH);
+    } else {
+      // Multi-page: slice canvas by available print height
+      const printH = pageH - 2 * margin;
+      const canvasPxPerIn = canvas.width / imgW;
+      const sliceH = Math.floor(printH * canvasPxPerIn);
+      let offsetY = 0;
+      let pageNum = 0;
+      while (offsetY < canvas.height) {
+        if (pageNum > 0) pdf.addPage();
+        const thisSlice = Math.min(sliceH, canvas.height - offsetY);
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = thisSlice;
+        sliceCanvas.getContext('2d').drawImage(canvas, 0, offsetY, canvas.width, thisSlice, 0, 0, canvas.width, thisSlice);
+        const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.97);
+        const sliceInH = (thisSlice / canvas.width) * imgW;
+        pdf.addImage(sliceData, 'JPEG', margin, margin, imgW, sliceInH);
+        offsetY += thisSlice;
+        pageNum++;
+      }
+    }
+    pdf.save(filename);
+
+    // ── Toast ─────────────────────────────────────────────────────────────────
+    const actionsBar = document.querySelector('.supply-actions');
+    if (actionsBar) {
+      // Remove existing toast if any
+      actionsBar.querySelectorAll('.pdf-toast').forEach(t => t.remove());
+      const toast = document.createElement('span');
+      toast.className = 'pdf-toast';
+      toast.textContent = '✅ Téléchargement démarré — vérifiez vos téléchargements !';
+      actionsBar.appendChild(toast);
+      setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 5000);
+    }
+
   } catch(e) {
     console.error('PDF suppléance :', e);
     alert('Erreur lors de la génération du PDF : ' + (e?.message || e));
   } finally {
+    if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
     if (btn) { btn.innerHTML = origContent; btn.disabled = false; }
   }
 }
@@ -2672,6 +2839,8 @@ function printSupplyPlan() {
   const ratingHtml = ratings.map(r => `<div class="rating-row"><span class="box">☐</span><span>${escapeHtml(r)}</span></div>`).join('');
   const workHtml = workLines.map(v => `<div class="work-line">${escapeHtml(v || ' ')}</div>`).join('');
   const noteHtml = escapeHtml(s['supply-note'] || '');
+  const linksLines = (s['supply-links'] || '').split(/\n/).map(v => v.trim()).filter(Boolean);
+  const linksHtml = linksLines.length ? `<div class="links-section"><strong>Liens utiles :</strong><ul>${linksLines.map(l => `<li><a href="${escapeHtml(l)}">${escapeHtml(l)}</a></li>`).join('')}</ul></div>` : '';
   const doc = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Planification suppléance</title><style>
     @page { size: letter portrait; margin: 0.45in; }
     body { margin:0; font: 15px/1.35 Arial, Helvetica, sans-serif; color:#111; }
@@ -2700,12 +2869,16 @@ function printSupplyPlan() {
     .comments-title { display:inline-block; background:#fff16a; font-weight:700; text-decoration:underline; padding:1px 2px; margin-top:18px; }
     .footer-line { margin-top:14px; text-align:center; font-weight:700; }
     .footer-line span { display:inline-block; min-width:210px; border-bottom:1px solid #111; vertical-align:middle; }
+    .links-section { margin-top:14px; font-size:14px; }
+    .links-section ul { margin:6px 0 0 22px; }
+    .links-section li { margin:5px 0; }
+    .links-section a { color:#0000ee; word-break:break-all; }
   </style></head><body><div class="page">
     <div class="top">
       <div class="brand">${getCurrentSchoolLogoDataUri() ? `<img src="${getCurrentSchoolLogoDataUri()}" alt="${escapeHtml(getCurrentSchoolName())}">` : ''}<div class="title">Planification de la suppléance</div></div>
       <div class="meta-right">
         <div class="row"><strong>Date :</strong> <span class="line">${escapeHtml(formatSupplyDateForPrint(s['supply-date']))}</span></div>
-        <div class="row"><strong>Période :</strong> <span class="line short">${escapeHtml(s['supply-period'])}</span></div>
+        <div class="row"><strong>Période(s) :</strong> <span class="line short">${escapeHtml(s['supply-period'])}</span></div>
         <div style="height:12px"></div>
         <div class="row"><strong>Enseignant absent :</strong> <span class="line">${escapeHtml(s['supply-teacher'])}</span></div>
         <div class="row"><strong>Suppléant(e) :</strong> <span class="line">${escapeHtml(s['supply-replacement'])}</span></div>
@@ -2715,7 +2888,7 @@ function printSupplyPlan() {
       <div>
         <div class="label-line"><strong>Matière :</strong> ${escapeHtml(s['supply-subject'])}</div>
         <div class="label-line"><strong>Niveau :</strong> ${escapeHtml(s['supply-level'])}</div>
-        <div class="label-line"><strong>Groupe :</strong> ${escapeHtml(s['supply-group'])}</div>
+        <div class="label-line"><strong>Groupe(s) :</strong> ${escapeHtml(s['supply-group'])}</div>
         <div class="label-line"><strong>Local :</strong> ${escapeHtml(s['supply-room'])}</div>
         <div class="section-title">Élève(s) absent(s) :</div>
         ${supplyLinesHtml(4, absentLines)}
@@ -2728,6 +2901,7 @@ function printSupplyPlan() {
     ${workHtml}
     <div class="rules"><strong>Règles :</strong><ul>${rulesLines.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul></div>
     <div class="note-box">${noteHtml || '&nbsp;'}</div>
+    ${linksHtml}
     <div class="comments-title">Commentaires sur la période :</div>
     ${supplyLinesHtml(3, commentLines)}
     <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>
