@@ -1129,7 +1129,7 @@
           <div class="field-group"><label for="supply-group">Groupe(s)</label><input id="supply-group" type="text" placeholder="Entrez le ou les groupes"></div>
           <div class="field-group"><label for="supply-subject">Matière</label><input id="supply-subject" type="text" placeholder="Entrez votre matière"></div>
           <div class="field-group"><label for="supply-room">Local</label><input id="supply-room" type="text" placeholder="Entrez votre local"></div>
-          <div class="field-group"><label for="supply-teacher">Enseignant absent</label><input id="supply-teacher" type="text" placeholder="Prénom Nom"></div>
+          <div class="field-group"><label for="supply-teacher">Enseignant(e) absent(e)</label><input id="supply-teacher" type="text" placeholder="Prénom Nom"></div>
           <div class="field-group"><label for="supply-replacement">Suppléant(e)</label><input id="supply-replacement" type="text" placeholder="Prénom Nom"></div>
           <div class="field-group"><label for="supply-level">Niveau</label><input id="supply-level" type="text" placeholder="Niveau"></div>
           <div class="field-group supply-wide">
@@ -1316,9 +1316,20 @@ function closeSchoolSelector() {
   }
   if (btn) btn.setAttribute('aria-expanded', 'false');
 }
+async function saveSchoolToSheet(key) {
+  if (!appSpreadsheetId || !googleAccessToken) return;
+  apiFetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(CONFIG_SHEET+'!A7:B7')}?valueInputOption=USER_ENTERED`,
+    { method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ values: [['selected_school', key]] }) }
+  ).catch(() => {});
+}
 function changeSchool(key) {
   applySchoolSelection(key);
   closeSchoolSelector();
+  if (googleAccessToken && appSpreadsheetId) {
+    saveSchoolToSheet(key);
+  }
 }
 document.addEventListener('click', (e) => {
   const wrap = document.getElementById('school-select-wrap');
@@ -1851,6 +1862,39 @@ function saveSupplyProfileForCurrentUser() {
     subject: document.getElementById('supply-subject')?.value.trim() || ''
   };
   localStorage.setItem(key, JSON.stringify(profile));
+  // Also persist to Config sheet if connected
+  if (googleAccessToken && appSpreadsheetId && (profile.teacher || profile.subject)) {
+    apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(CONFIG_SHEET+'!A5:B6')}?valueInputOption=USER_ENTERED`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ values: [['teacher_name', profile.teacher], ['teacher_subject', profile.subject]] })
+    }).catch(() => {});
+  }
+}
+async function loadSupplyProfileFromSheet() {
+  if (!googleAccessToken || !appSpreadsheetId) return;
+  try {
+    const data = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(CONFIG_SHEET+'!A:B')}`);
+    const rows = data.values || [];
+    const map = {};
+    rows.slice(1).forEach(r => { if (r[0]) map[r[0]] = r[1] || ''; });
+    const teacher = map['teacher_name'] || '';
+    const subject = map['teacher_subject'] || '';
+    if (teacher || subject) {
+      // Save to localStorage for offline use
+      const key = getSupplyProfileKey();
+      if (key) localStorage.setItem(key, JSON.stringify({ teacher, subject }));
+      // Apply to form if empty
+      const teacherEl = document.getElementById('supply-teacher');
+      const subjectEl = document.getElementById('supply-subject');
+      if (teacherEl && !teacherEl.value.trim() && teacher) teacherEl.value = teacher;
+      if (subjectEl && !subjectEl.value.trim() && subject) subjectEl.value = subject;
+    }
+    // Restore school preference saved in the sheet
+    const savedSchool = map['selected_school'];
+    if (savedSchool && SCHOOL_OPTIONS[savedSchool]) {
+      applySchoolSelection(savedSchool);
+    }
+  } catch(e) { console.warn('loadSupplyProfileFromSheet:', e); }
 }
 function todayIsoLocal() {
   const d = new Date();
@@ -1956,6 +2000,7 @@ async function afterGoogleLogin(refreshUi = true) {
     setStatus('google-status', 'Connexion réussie. Chargement...', 'ok');
     await ensureOnlineStorage();
     await Promise.all([refreshBank(), refreshCourses(), refreshSupplyPlans(), loadClassroomCourses()]);
+    await loadSupplyProfileFromSheet();
     if (refreshUi) refreshGoogleUi();
     updateRoleBasedUi();
     applySupplyDefaultsForCurrentUser(false);
@@ -3243,13 +3288,25 @@ if (reuseSupplySelectEl) reuseSupplySelectEl.addEventListener('change', (e) => {
 });
 const supplyWorkEl = document.getElementById('supply-work');
 if (supplyWorkEl) supplyWorkEl.addEventListener('input', () => { supplyWorkEl.dataset.synced = '0'; });
+function waitForGoogle(maxMs = 8000) {
+  return new Promise(resolve => {
+    if (typeof google !== 'undefined' && google?.accounts?.oauth2) { resolve(true); return; }
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      if (typeof google !== 'undefined' && google?.accounts?.oauth2) { clearInterval(iv); resolve(true); }
+      else if (Date.now() - t0 > maxMs) { clearInterval(iv); resolve(false); }
+    }, 100);
+  });
+}
 const maybeConnectSilently = async () => {
-  if (googleAccessToken) {
-    try { await afterGoogleLogin(); return; } catch (err) { console.error(err); }
+  const loaded = await waitForGoogle(8000);
+  if (!loaded) return;
+  // If stored token is still valid, use it directly
+  if (googleAccessToken && googleTokenExpiry && Date.now() < googleTokenExpiry) {
+    try { await afterGoogleLogin(); return; } catch (err) { /* token may have been revoked */ }
   }
-  if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-    try { await trySilentGoogleRefresh(); } catch (e) {}
-  }
+  // Try silent refresh (no popup — relies on existing browser Google session)
+  try { await trySilentGoogleRefresh(); } catch (e) {}
 };
 function openChangelog() {
   document.getElementById('changelog-overlay').classList.add('open');
