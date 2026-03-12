@@ -702,8 +702,111 @@
 
   .hint { font-size: 0.75rem; color: #aaa; margin-top: 4px; }
 
-  /* disabled input */
-  input:disabled {
+  /* Changelog modal */
+  .changelog-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+  }
+  .changelog-overlay.open { display: flex; }
+  .changelog-modal {
+    background: #fff;
+    border-radius: 14px;
+    padding: 32px 36px;
+    max-width: 580px;
+    width: calc(100vw - 40px);
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+    position: relative;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .changelog-modal h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.35rem;
+    font-weight: 400;
+    margin-bottom: 4px;
+    color: var(--dark);
+  }
+  .changelog-version-badge {
+    display: inline-block;
+    background: var(--red);
+    color: #fff;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-bottom: 18px;
+  }
+  .changelog-date {
+    font-size: 0.78rem;
+    color: #aaa;
+    margin-left: 8px;
+  }
+  .changelog-section {
+    margin-bottom: 18px;
+  }
+  .changelog-section h3 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--orange);
+    margin-bottom: 8px;
+  }
+  .changelog-section ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .changelog-section ul li {
+    font-size: 0.88rem;
+    color: #444;
+    padding: 5px 0 5px 18px;
+    border-bottom: 1px solid #f3eeea;
+    position: relative;
+    line-height: 1.45;
+  }
+  .changelog-section ul li:last-child { border-bottom: none; }
+  .changelog-section ul li::before {
+    content: '✦';
+    position: absolute;
+    left: 0;
+    color: var(--red);
+    font-size: 0.6rem;
+    top: 7px;
+  }
+  .changelog-close {
+    position: absolute;
+    top: 16px;
+    right: 18px;
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    color: #bbb;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+  }
+  .changelog-close:hover { color: var(--red); }
+  .changelog-trigger {
+    color: #bbb;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.15s;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 0;
+  }
+  .changelog-trigger:hover { color: var(--red); }
     background: #f5f5f5;
     color: #aaa;
     border-color: #eee;
@@ -3148,12 +3251,80 @@ const maybeConnectSilently = async () => {
     try { await trySilentGoogleRefresh(); } catch (e) {}
   }
 };
-maybeConnectSilently().catch(() => {});
+function openChangelog() {
+  document.getElementById('changelog-overlay').classList.add('open');
+}
+function closeChangelog() {
+  document.getElementById('changelog-overlay').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeChangelog(); });
+
 
 </script>
 
+<!-- Changelog modal -->
+<div class="changelog-overlay" id="changelog-overlay" onclick="if(event.target===this)closeChangelog()">
+  <div class="changelog-modal">
+    <button class="changelog-close" onclick="closeChangelog()" title="Fermer">×</button>
+    <h2>Notes de mise à jour</h2>
+    <div>
+      <span class="changelog-version-badge">v1.0.8</span>
+      <span class="changelog-date">Mars 2026</span>
+    </div>
+
+    <div class="changelog-section">
+      <h3>📄 PDF — Téléchargement de la planification de suppléance</h3>
+      <ul>
+        <li>Nouveau bouton <strong>Télécharger en PDF</strong> — génère un PDF identique à l'impression, format lettre 8,5×11.</li>
+        <li>Correction du PDF blanc : rendu via iframe isolé + html2canvas + jsPDF (les grilles CSS n'étant pas supportées par html2canvas, la mise en page utilise des tableaux HTML équivalents).</li>
+        <li>Message de confirmation <em>« Téléchargement démarré — vérifiez vos téléchargements ! »</em> qui disparaît après 5 secondes.</li>
+        <li>Support multi-page si le contenu dépasse une page.</li>
+      </ul>
+    </div>
+
+    <div class="changelog-section">
+      <h3>📋 Planification de la suppléance — Nouveaux champs</h3>
+      <ul>
+        <li><strong>Liens URL à fournir au suppléant</strong> : un lien par ligne, cliquables dans le PDF et l'impression.</li>
+        <li><strong>Période</strong> et <strong>Groupe</strong> renommés en <strong>Période(s)</strong> et <strong>Groupe(s)</strong> pour couvrir plusieurs groupes/périodes.</li>
+        <li>Le champ <strong>Travail à faire</strong> est maintenant un éditeur enrichi (gras, italique, souligné).</li>
+        <li><strong>Devoir(s)</strong> et <strong>Rappel(s)</strong> s'affichent en gras souligné dans le champ Travail à faire, sans ligne vide entre eux.</li>
+        <li>Correction des retours à la ligne superflus entre les activités et le devoir.</li>
+      </ul>
+    </div>
+
+    <div class="changelog-section">
+      <h3>📄 Impression &amp; PDF — Mise en page</h3>
+      <ul>
+        <li>Section <em>Élève(s) absent(s)</em> réduite à 2 lignes (au lieu de 4) pour gagner de l'espace.</li>
+        <li>Ajout d'un <strong>Merci !</strong> aligné à droite en bas de page, suivi du nom de l'enseignant absent.</li>
+      </ul>
+    </div>
+
+    <div class="changelog-section">
+      <h3>🗂️ Banque d'activités — Nouvelles fonctions</h3>
+      <ul>
+        <li><strong>Recherche en temps réel</strong> dans la liste des activités.</li>
+        <li>Cliquer une activité la <strong>sélectionne</strong> (surlignée) sans l'ajouter automatiquement.</li>
+        <li>Bouton <strong>Ajouter au plan</strong> (vert) — insère l'activité sélectionnée dans la première case libre.</li>
+        <li>Bouton <strong>Effacer</strong> (rouge) — supprime définitivement l'activité de la banque Google Sheets après confirmation.</li>
+        <li>Correction du bug de suppression <em>« No grid with id: 0 »</em> — le bon identifiant de feuille est maintenant résolu.</li>
+        <li>Correction des doublons : une activité déjà présente dans la banque n'est plus réajoutée lors de la génération du plan.</li>
+      </ul>
+    </div>
+
+    <div class="changelog-section">
+      <h3>🔤 Terminologie</h3>
+      <ul>
+        <li><strong>Devoir → Devoir(s)</strong> et <strong>Rappel → Rappel(s)</strong> dans le formulaire, l'aperçu, le texte Classroom et la suppléance.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
 <footer style="text-align:center;padding:24px;font-family:'DM Sans',sans-serif;font-size:0.78rem;color:#aaa;border-top:1px solid #e2ddd8;margin-top:20px;">
   &copy; 2026 Kevin Tremblay &mdash; Équipe des technopédagogues de l'École Cardinal-Roy
+  &mdash; <button class="changelog-trigger" onclick="openChangelog()">v1.0.8</button>
 </footer>
 </body>
 </html>
