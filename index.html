@@ -1658,10 +1658,18 @@ async function generer() {
   document.getElementById('btn-reset').style.display = 'flex';
 
   if (googleAccessToken && appSpreadsheetId && bankEntries.length) {
+    const alreadyInBank = new Set(bankActivities.map(a => a.normalized));
     const dedup = [];
     const seen = new Set();
-    bankEntries.forEach(entry => { if (!seen.has(entry.normalized)) { seen.add(entry.normalized); dedup.push(entry); } });
-    try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', "Plan généré, mais la banque n'a pas pu être mise à jour : " + e.message, 'err'); }
+    bankEntries.forEach(entry => {
+      if (!seen.has(entry.normalized)) {
+        seen.add(entry.normalized);
+        if (!alreadyInBank.has(entry.normalized)) dedup.push(entry);
+      }
+    });
+    if (dedup.length) {
+      try { await saveActivitiesToBank(dedup); } catch (e) { setStatus('bank-status', "Plan généré, mais la banque n'a pas pu être mise à jour : " + e.message, 'err'); }
+    }
   }
 
   if (!suppressCourseAutoSave && googleAccessToken && appSpreadsheetId) {
@@ -2750,7 +2758,7 @@ async function downloadSupplyPDF() {
           <div class="label-line"><strong>Groupe(s) :</strong> ${escapeHtml(s['supply-group'])}</div>
           <div class="label-line"><strong>Local :</strong> ${escapeHtml(s['supply-room'])}</div>
           <div class="section-title">Élève(s) absent(s) :</div>
-          ${supplyLinesHtml(4, absentLines)}
+          ${supplyLinesHtml(2, absentLines)}
         </td>
         <td class="right-cell">
           <div class="rating-box"><div class="rating-title">Période en général</div>${ratingHtml}</div>
@@ -2764,6 +2772,7 @@ async function downloadSupplyPDF() {
       <div class="comments-title">Commentaires sur la période :</div>
       ${supplyLinesHtml(3, commentLines)}
       <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>
+      <div style="text-align:right;font-weight:700;font-size:14px;margin-top:8px;">Merci !<br>${escapeHtml(s['supply-teacher'])}</div>
     </body></html>`;
 
     // ── Write into a hidden iframe so CSS is in <head> and layout is correct ──
@@ -2919,7 +2928,7 @@ function printSupplyPlan() {
         <div class="label-line"><strong>Groupe(s) :</strong> ${escapeHtml(s['supply-group'])}</div>
         <div class="label-line"><strong>Local :</strong> ${escapeHtml(s['supply-room'])}</div>
         <div class="section-title">Élève(s) absent(s) :</div>
-        ${supplyLinesHtml(4, absentLines)}
+        ${supplyLinesHtml(2, absentLines)}
       </div>
       <div>
         <div class="rating-box"><div class="rating-title">Période en général</div>${ratingHtml}</div>
@@ -2933,6 +2942,7 @@ function printSupplyPlan() {
     <div class="comments-title">Commentaires sur la période :</div>
     ${supplyLinesHtml(3, commentLines)}
     <div class="footer-line">Laisser le rapport <span>${escapeHtml(s['supply-return'])}</span></div>
+      <div style="text-align:right;font-weight:700;font-size:14px;margin-top:8px;">Merci !<br>${escapeHtml(s['supply-teacher'])}</div>
   </div><script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };<\/script></body></html>`;
   const win = window.open('', '_blank', 'width=900,height=1200');
   if (!win) { alert('La fenêtre d’impression a été bloquée par le navigateur.'); return; }
