@@ -2298,10 +2298,14 @@ function renderBankList() {
     box.innerHTML = `<div class="bank-item">${bankActivities.length ? 'Aucun résultat.' : 'Aucune activité enregistrée.'}</div>`;
     return;
   }
-  box.innerHTML = filtered.map(a => {
-    const sel = a.text === selectedBankText ? ' selected' : '';
-    return `<div class="bank-item${sel}" onclick="selectBankActivity(${JSON.stringify(a.text)})">${escapeHtml(a.text)}</div>`;
-  }).join('');
+  box.innerHTML = '';
+  filtered.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'bank-item' + (a.text === selectedBankText ? ' selected' : '');
+    div.textContent = a.text;
+    div.addEventListener('click', () => selectBankActivity(a.text));
+    box.appendChild(div);
+  });
 }
 function selectBankActivity(text) {
   selectedBankText = text;
