@@ -756,6 +756,7 @@
   .supply-wide { grid-column:1 / -1; }
   .supply-textarea { width:100%; min-height:96px; border:1px solid #ddd6cf; border-radius:10px; padding:10px 12px; font:400 0.92rem 'DM Sans',sans-serif; color:#2d2d2d; resize:vertical; background:#fff; }
   .supply-textarea.small { min-height:72px; }
+  .supply-work-editor { min-height:96px; max-height:260px; overflow-y:auto; line-height:1.55; }
   .supply-rules-bank { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
   .rule-chip { border:1px solid #d8cfc7; background:#faf7f3; color:#6f5d4f; border-radius:999px; padding:7px 10px; font:500 0.8rem 'DM Sans',sans-serif; cursor:pointer; }
   .rule-chip:hover { background:#f4ede6; }
@@ -921,7 +922,7 @@
 
     <!-- Devoir -->
     <div class="special-field">
-      <label for="devoir">Devoir</label>
+      <label for="devoir">Devoir(s)</label>
       <div class="rich-editor" id="devoir" contenteditable="true" data-placeholder="Terminer son paragraphe et la correction complète pour demain" spellcheck="true"></div>
       <div class="checkbox-row">
         <input type="checkbox" id="pas-devoir" onchange="toggleDevoir()">
@@ -931,7 +932,7 @@
 
     <!-- Rappel -->
     <div class="special-field">
-      <label for="rappel">Rappel <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.75rem;color:#bbb;">(optionnel)</span></label>
+      <label for="rappel">Rappel(s) <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.75rem;color:#bbb;">(optionnel)</span></label>
       <div class="rich-editor" id="rappel" contenteditable="true" data-placeholder="Examen final sur le roman Entre chiens et loups lundi…" spellcheck="true"></div>
       <div class="checkbox-row">
         <input type="checkbox" id="pas-rappel" onchange="toggleRappel()">
@@ -1028,7 +1029,7 @@
           <div class="field-group"><label for="supply-level">Niveau</label><input id="supply-level" type="text" placeholder="Niveau"></div>
           <div class="field-group supply-wide">
             <label for="supply-work">Travail à faire</label>
-            <textarea id="supply-work" class="supply-textarea" placeholder="Le travail du cours sera généré automatiquement ici."></textarea>
+            <div id="supply-work" class="rich-editor supply-work-editor" contenteditable="true" data-synced="1" data-placeholder="Le travail du cours sera généré automatiquement ici."></div>
           </div>
           <div class="field-group supply-wide">
             <label for="supply-rules">Règles</label>
@@ -1633,16 +1634,16 @@ async function generer() {
   });
 
   if (pasDevoir) {
-    previewHTML += `<p class="special"><b>Devoir :</b> <b>Aucun devoir</b></p>`;
+    previewHTML += `<p class="special"><b>Devoir(s) :</b> <b>Aucun devoir</b></p>`;
   } else if (devoirText) {
     const lines = richToLines(devoirHTML);
-    previewHTML += `<p class="special"><b>Devoir :</b> ${lines[0]}</p>`;
+    previewHTML += `<p class="special"><b>Devoir(s) :</b> ${lines[0]}</p>`;
     for (let i = 1; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
   }
 
   if (!pasRappel && rappelText) {
     const lines = richToLines(rappelHTML);
-    previewHTML += `<p class="special"><b>Rappel :</b> ${lines[0]}</p>`;
+    previewHTML += `<p class="special"><b>Rappel(s) :</b> ${lines[0]}</p>`;
     for (let i = 1; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
   }
 
@@ -2217,7 +2218,9 @@ async function loadSavedSupplyPlan(id) {
     if (plan.payload.supplyState) {
       Object.entries(plan.payload.supplyState).forEach(([key, val]) => {
         const el = document.getElementById(key);
-        if (el) el.value = val || '';
+        if (!el) return;
+        if (key === 'supply-work') el.innerHTML = val || '';
+        else el.value = val || '';
       });
     }
     await generer();
@@ -2494,8 +2497,8 @@ function buildCurrentPlanTextForClassroom() {
   const activiteEditors = document.querySelectorAll('.activity-row .rich-editor'); let idx = 0;
   activiteEditors.forEach(ed => { const t = htmlVersTexteClassroom(ed.innerHTML); if (!t) return; const lines = t.split(/\n+/).map(x => x.trim()).filter(Boolean); if (!lines.length) return; texte += NUMERO_EMOJIS[idx] + ' ' + lines[0] + '\n'; for (let i = 1; i < lines.length; i++) texte += '   ' + lines[i] + '\n'; idx++; });
   const pasDevoir = document.getElementById('pas-devoir').checked; const devoir = htmlVersTexteClassroom(document.getElementById('devoir').innerHTML); const pasRappel = document.getElementById('pas-rappel').checked; const rappel = htmlVersTexteClassroom(document.getElementById('rappel').innerHTML);
-  if (pasDevoir) texte += '\nDevoir : Aucun devoir'; else if (devoir) texte += '\nDevoir : ' + devoir.replace(/\n{2,}/g, '\n');
-  if (!pasRappel && rappel) texte += '\nRappel : ' + rappel.replace(/\n{2,}/g, '\n');
+  if (pasDevoir) texte += '\nDevoir(s) : Aucun devoir'; else if (devoir) texte += '\nDevoir(s) : ' + devoir.replace(/\n{2,}/g, '\n');
+  if (!pasRappel && rappel) texte += '\nRappel(s) : ' + rappel.replace(/\n{2,}/g, '\n');
   return texte.trim();
 }
 async function publishToClassroom() {
@@ -2587,26 +2590,30 @@ function appendSupplyRule(rule) {
   ta.value = lines.join('\n');
 }
 function buildSupplyWorkTextFromCourse() {
-  const parts = [];
+  let html = '';
   const activities = [...document.querySelectorAll('.activity-row .rich-editor')].map(ed => htmlVersTexteClassroom(ed.innerHTML).trim()).filter(Boolean);
   activities.forEach((txt, idx) => {
     const lines = txt.split(/\n+/).filter(Boolean);
     if (!lines.length) return;
-    parts.push(`${idx + 1}. ${lines[0]}`);
-    for (let i = 1; i < lines.length; i++) parts.push(`   ${lines[i]}`);
-    parts.push('');
+    html += `<div>${idx + 1}. ${escapeHtml(lines[0])}</div>`;
+    for (let i = 1; i < lines.length; i++) html += `<div style="margin-left:1.5em">${escapeHtml(lines[i])}</div>`;
   });
   const devoir = document.getElementById('pas-devoir').checked ? '' : htmlVersTexteClassroom(document.getElementById('devoir').innerHTML).trim();
   const rappel = document.getElementById('pas-rappel').checked ? '' : htmlVersTexteClassroom(document.getElementById('rappel').innerHTML).trim();
-  if (devoir) parts.push('', 'Devoir : ' + devoir.replace(/\n+/g, '\n'));
-  if (rappel) parts.push('', 'Rappel : ' + rappel.replace(/\n+/g, '\n'));
-  return parts.join('\n').trim();
+  if (devoir) {
+    if (html) html += '<br>';
+    html += `<div><strong><u>Devoir(s) :</u></strong> ${escapeHtml(devoir.replace(/\n+/g, ' '))}</div>`;
+  }
+  if (rappel) {
+    html += `<div><strong><u>Rappel(s) :</u></strong> ${escapeHtml(rappel.replace(/\n+/g, ' '))}</div>`;
+  }
+  return html;
 }
 function syncSupplyFromCourse(forceWork) {
   const workEl = document.getElementById('supply-work');
   const generated = buildSupplyWorkTextFromCourse();
-  if (workEl && (forceWork || !workEl.value.trim() || workEl.dataset.synced === '1')) {
-    workEl.value = generated;
+  if (workEl && (forceWork || !workEl.innerText.trim() || workEl.dataset.synced === '1')) {
+    workEl.innerHTML = generated;
     workEl.dataset.synced = '1';
   }
 }
@@ -2620,9 +2627,10 @@ function parseFrenchDateStr(value) {
   return new Date(Number(m[3]), idx, Number(m[1]));
 }
 function getSupplyState() {
-  const ids = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-work','supply-rules','supply-note','supply-return','supply-links'];
+  const ids = ['supply-date','supply-period','supply-group','supply-subject','supply-room','supply-teacher','supply-replacement','supply-level','supply-rules','supply-note','supply-return','supply-links'];
   const out = {};
   ids.forEach(id => out[id] = document.getElementById(id)?.value || '');
+  out['supply-work'] = document.getElementById('supply-work')?.innerHTML || '';
   return out;
 }
 function sauvegarderSupplyLocal() {}
@@ -2656,12 +2664,11 @@ async function downloadSupplyPDF() {
 
     // Build EXACTLY the same document as printSupplyPlan, minus the auto-print script
     const absentLines = [];
-    const workLines = (s['supply-work'] || '').split(/\n/).map(v => v.replace(/\s+$/,'')).filter((v, i, arr) => v || i < arr.length - 1);
+    const workHtml = `<div class="work-content">${s['supply-work'] || ''}</div>`;
     const rulesLines = (s['supply-rules'] || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
     const commentLines = [];
     const ratings = ['Excellente période','Bonne période','Période moyenne','Mauvaise période'];
     const ratingHtml = ratings.map(r => `<div class="rating-row"><span class="box">☐</span><span>${escapeHtml(r)}</span></div>`).join('');
-    const workHtml = workLines.map(v => `<div class="work-line">${escapeHtml(v || ' ')}</div>`).join('');
     const noteHtml = escapeHtml(s['supply-note'] || '');
     const linksLines = (s['supply-links'] || '').split(/\n/).map(v => v.trim()).filter(Boolean);
     const linksHtml = linksLines.length ? `<div class="links-section"><strong>Liens utiles :</strong><ul>${linksLines.map(l => `<li><a href="${escapeHtml(l)}">${escapeHtml(l)}</a></li>`).join('')}</ul></div>` : '';
@@ -2694,7 +2701,9 @@ async function downloadSupplyPDF() {
       .rating-title { font-size:15px; text-decoration:underline; margin-bottom:10px; }
       .rating-row { display:flex; align-items:center; gap:10px; margin:13px 0; font-size:14px; }
       .box { display:inline-block; width:18px; text-align:center; font-size:16px; }
-      .work-line { min-height:18px; margin-bottom:6px; white-space:pre-wrap; font-size:14px; }
+      .work-content { font-size:14px; line-height:1.5; }
+      .work-content div { min-height:18px; margin-bottom:4px; }
+      .work-content br { display:block; margin:4px 0; }
       .rules { margin-top:10px; font-size:14px; }
       .rules ul { margin:6px 0 0 22px; list-style:disc; }
       .rules li { margin:7px 0; }
@@ -2837,7 +2846,7 @@ function printSupplyPlan() {
   const commentLines = [];
   const ratings = ['Excellente période','Bonne période','Période moyenne','Mauvaise période'];
   const ratingHtml = ratings.map(r => `<div class="rating-row"><span class="box">☐</span><span>${escapeHtml(r)}</span></div>`).join('');
-  const workHtml = workLines.map(v => `<div class="work-line">${escapeHtml(v || ' ')}</div>`).join('');
+  const workHtml = `<div class="work-content">${s['supply-work'] || ''}</div>`;
   const noteHtml = escapeHtml(s['supply-note'] || '');
   const linksLines = (s['supply-links'] || '').split(/\n/).map(v => v.trim()).filter(Boolean);
   const linksHtml = linksLines.length ? `<div class="links-section"><strong>Liens utiles :</strong><ul>${linksLines.map(l => `<li><a href="${escapeHtml(l)}">${escapeHtml(l)}</a></li>`).join('')}</ul></div>` : '';
@@ -2861,7 +2870,9 @@ function printSupplyPlan() {
     .rating-title { font-size:16px; text-decoration:underline; margin-bottom:10px; }
     .rating-row { display:flex; align-items:center; gap:10px; margin:15px 0; font-size:14px; }
     .box { display:inline-block; width:18px; text-align:center; font-size:16px; }
-    .work-line { min-height:18px; margin-bottom:6px; white-space:pre-wrap; }
+    .work-content { font-size:14px; line-height:1.5; }
+    .work-content div { min-height:18px; margin-bottom:4px; }
+    .work-content br { display:block; margin:4px 0; }
     .rules { margin-top:10px; }
     .rules ul { margin:6px 0 0 22px; }
     .rules li { margin:7px 0; }
@@ -3096,10 +3107,12 @@ if (reuseSupplySelectEl) reuseSupplySelectEl.addEventListener('change', (e) => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('change', saveSupplyProfileForCurrentUser);
 });
-['supply-work','supply-rules','supply-note','supply-return','supply-room','supply-level','supply-group','supply-period','supply-replacement','supply-date'].forEach(id => {
+['supply-rules','supply-note','supply-return','supply-room','supply-level','supply-group','supply-period','supply-replacement','supply-date'].forEach(id => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener('input', () => { if (id === 'supply-work') el.dataset.synced = '0'; });
+  if (el) el.addEventListener('input', () => {});
 });
+const supplyWorkEl = document.getElementById('supply-work');
+if (supplyWorkEl) supplyWorkEl.addEventListener('input', () => { supplyWorkEl.dataset.synced = '0'; });
 const maybeConnectSilently = async () => {
   if (googleAccessToken) {
     try { await afterGoogleLogin(); return; } catch (err) { console.error(err); }
