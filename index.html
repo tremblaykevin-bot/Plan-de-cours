@@ -733,6 +733,8 @@
   .btn-delete-bank { border:none; border-radius:10px; padding:10px 12px; background:#e5e0db; color:#aaa; font:600 0.84rem 'DM Sans',sans-serif; cursor:not-allowed; white-space:nowrap; transition:background 0.15s,color 0.15s; }
   .btn-delete-bank.active { background:var(--red); color:#fff; cursor:pointer; }
   .btn-delete-bank.active:hover { background:#a50d24; }
+  #btn-add-bank-to-plan.active { background:#2d6a4f; color:#fff; cursor:pointer; }
+  #btn-add-bank-to-plan.active:hover { background:#1e4d39; }
   .bank-meta { font-size:.74rem; color:#857a72; }
   .activity-row { position:relative; transition:transform .16s ease, box-shadow .16s ease, background-color .16s ease; }
   .activity-row.dragging { opacity:.7; background:#fbf6f2; box-shadow:0 8px 24px rgba(0,0,0,.08); }
@@ -997,10 +999,10 @@
     <div class="right-tab-panel" id="right-tab-bank">
       <h2>Banque d'activités</h2>
       <div class="google-card">
-        <div class="google-row" style="margin-bottom:10px;">
+        <div class="google-row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
           <button class="btn-secondary-soft" onclick="refreshBank()">Actualiser la banque</button>
+          <button class="btn-delete-bank" id="btn-add-bank-to-plan" type="button" onclick="addSelectedBankActivityToPlan()" style="background:#e5e0db;color:#aaa;cursor:not-allowed;">Ajouter au plan</button>
           <button class="btn-delete-bank" id="btn-delete-bank" type="button" onclick="deleteSelectedBankActivity()">Effacer</button>
-          <span class="auth-pill" id="sheet-pill" style="display:none;"></span>
         </div>
         <div class="google-status" id="bank-status"></div>
         <input class="bank-search" id="bank-search" type="text" placeholder="🔍 Rechercher une activité…" oninput="renderBankList()">
@@ -1126,6 +1128,7 @@ let googleUser = null;
 let appSpreadsheetId = localStorage.getItem('plan_cours_sheet_id') || '';
 let supplyPlansSheetId = null;
 let coursesSheetId = null;
+let activitesSheetId = null;
 let bankActivities = [];
 let savedCourses = [];
 let suppressCourseAutoSave = false;
@@ -1868,7 +1871,7 @@ function refreshGoogleUi() {
     if (btnIn) { btnIn.textContent = 'Se connecter avec Google'; btnIn.classList.remove('connected'); }
   }
   const sheetPill = document.getElementById('sheet-pill');
-  if (appSpreadsheetId) { sheetPill.style.display = ''; sheetPill.textContent = 'Sheet connecté'; } else sheetPill.style.display = 'none';
+  if (appSpreadsheetId) { if (sheetPill) { sheetPill.style.display = ''; sheetPill.textContent = 'Sheet connecté'; } } else { if (sheetPill) sheetPill.style.display = 'none'; }
 }
 async function refreshSheetMetadata(force = false) {
   if (!googleAccessToken || !appSpreadsheetId) return;
@@ -1877,6 +1880,7 @@ async function refreshSheetMetadata(force = false) {
     const sheets = _sheetMetaCache;
     supplyPlansSheetId = sheets.find(s => s.properties?.title === SUPPLY_PLANS_SHEET)?.properties?.sheetId ?? null;
     coursesSheetId = sheets.find(s => s.properties?.title === COURSES_SHEET)?.properties?.sheetId ?? null;
+    activitesSheetId = sheets.find(s => s.properties?.title === ACTIVITES_SHEET)?.properties?.sheetId ?? null;
     return;
   }
   const meta = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}?fields=sheets(properties(sheetId,title))`);
@@ -1885,6 +1889,7 @@ async function refreshSheetMetadata(force = false) {
   _sheetMetaCacheTime = now;
   supplyPlansSheetId = sheets.find(s => s.properties?.title === SUPPLY_PLANS_SHEET)?.properties?.sheetId ?? null;
   coursesSheetId = sheets.find(s => s.properties?.title === COURSES_SHEET)?.properties?.sheetId ?? null;
+    activitesSheetId = sheets.find(s => s.properties?.title === ACTIVITES_SHEET)?.properties?.sheetId ?? null;
 }
 
 async function ensureOnlineStorage() {
@@ -1916,6 +1921,7 @@ async function ensureSheetStructure() {
   let sheetsMeta = meta.sheets || [];
   supplyPlansSheetId = (sheetsMeta.find(s => s.properties?.title === SUPPLY_PLANS_SHEET)?.properties?.sheetId) ?? null;
   coursesSheetId = (sheetsMeta.find(s => s.properties?.title === COURSES_SHEET)?.properties?.sheetId) ?? null;
+  activitesSheetId = (sheetsMeta.find(s => s.properties?.title === ACTIVITES_SHEET)?.properties?.sheetId) ?? null;
   const titles = new Set(sheetsMeta.map(s => s.properties?.title).filter(Boolean));
   const requests = [];
   if (!titles.has(ACTIVITES_SHEET)) requests.push({ addSheet: { properties: { title: ACTIVITES_SHEET } } });
@@ -1928,6 +1934,7 @@ async function ensureSheetStructure() {
     sheetsMeta = meta.sheets || [];
     supplyPlansSheetId = (sheetsMeta.find(s => s.properties?.title === SUPPLY_PLANS_SHEET)?.properties?.sheetId) ?? null;
     coursesSheetId = (sheetsMeta.find(s => s.properties?.title === COURSES_SHEET)?.properties?.sheetId) ?? null;
+  activitesSheetId = (sheetsMeta.find(s => s.properties?.title === ACTIVITES_SHEET)?.properties?.sheetId) ?? null;
   }
 
   const cfg = await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(CONFIG_SHEET+'!A1:B10')}`);
@@ -2309,12 +2316,13 @@ function renderBankList() {
 }
 function selectBankActivity(text) {
   selectedBankText = text;
-  // Update delete button state
   const delBtn = document.getElementById('btn-delete-bank');
   if (delBtn) delBtn.classList.toggle('active', !!text);
-  // Re-render to show selection highlight
+  const addBtn = document.getElementById('btn-add-bank-to-plan');
+  if (addBtn) addBtn.classList.toggle('active', !!text);
   renderBankList();
-  // Insert into first empty activity field
+}
+function insertBankActivityByText(text) {
   const entry = bankActivities.find(a => a.text === text);
   const html = entry?.html || escapeHtml(text);
   let target = [...document.querySelectorAll('.activity-row .rich-editor')].find(ed => !ed.innerText.trim());
@@ -2328,8 +2336,9 @@ function selectBankActivity(text) {
   activeActivityEditor = target;
   sauvegarderPlanLocal();
 }
-function insertBankActivityByText(text) {
-  selectBankActivity(text);
+function addSelectedBankActivityToPlan() {
+  if (!selectedBankText) return;
+  insertBankActivityByText(selectedBankText);
 }
 async function deleteSelectedBankActivity() {
   if (!selectedBankText) return;
@@ -2342,13 +2351,17 @@ async function deleteSelectedBankActivity() {
   const ok = window.confirm(`Supprimer définitivement « ${entry.text} » de la banque ?`);
   if (!ok) return;
   try {
+    await refreshSheetMetadata(true);
+    if (!activitesSheetId && activitesSheetId !== 0) throw new Error('ID de la feuille Activites introuvable.');
     await apiFetch(`https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}:batchUpdate`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ requests: [{ deleteDimension: { range: { dimension: 'ROWS', startIndex: entry.rowNumber - 1, endIndex: entry.rowNumber } } }] })
+      body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: activitesSheetId, dimension: 'ROWS', startIndex: entry.rowNumber - 1, endIndex: entry.rowNumber } } }] })
     });
     selectedBankText = null;
     const delBtn = document.getElementById('btn-delete-bank');
     if (delBtn) delBtn.classList.remove('active');
+    const addBtn = document.getElementById('btn-add-bank-to-plan');
+    if (addBtn) addBtn.classList.remove('active');
     await refreshBank();
   } catch(e) {
     console.error('Erreur suppression activité :', e);
