@@ -3306,8 +3306,12 @@ const maybeConnectSilently = async () => {
     try { await afterGoogleLogin(); return; } catch (err) { /* token may have been revoked */ }
   }
   // Try silent refresh (no popup — relies on existing browser Google session)
-  try { await trySilentGoogleRefresh(); } catch (e) {}
+  try {
+    const ok = await trySilentGoogleRefresh();
+    if (ok) refreshGoogleUi(); // mise à jour visuelle (bouton, pill) après refresh silencieux
+  } catch (e) {}
 };
+maybeConnectSilently(); // déclencher la reconnexion automatique au chargement
 function openChangelog() {
   document.getElementById('changelog-overlay').classList.add('open');
 }
