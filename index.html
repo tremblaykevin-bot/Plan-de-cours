@@ -2298,12 +2298,13 @@ function requestGoogleToken(promptValue) {
 async function trySilentGoogleRefresh() {
   try {
     await Promise.race([
-      requestGoogleToken(''),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 7000))
+      requestGoogleToken('none'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
     ]);
     await afterGoogleLogin(false);
     return true;
   } catch (e) {
+    // Échec silencieux — pas de popup, l'utilisateur devra se reconnecter manuellement
     return false;
   }
 }
