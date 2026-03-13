@@ -2184,12 +2184,18 @@ function requestGoogleToken(promptValue) {
       localStorage.setItem('g_access_token_expiry', String(googleTokenExpiry));
       resolve(response);
     };
-    googleTokenClient.requestAccessToken({ prompt: promptValue });
+    const _tokenParams = { prompt: promptValue };
+    const _hint = localStorage.getItem('g_user_hint');
+    if (_hint && !promptValue) _tokenParams.login_hint = _hint;
+    googleTokenClient.requestAccessToken(_tokenParams);
   });
 }
 async function trySilentGoogleRefresh() {
   try {
-    await requestGoogleToken('');
+    await Promise.race([
+      requestGoogleToken(''),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 7000))
+    ]);
     await afterGoogleLogin(false);
     return true;
   } catch (e) {
@@ -2228,6 +2234,7 @@ async function googleDisconnect() {
   googleAccessToken = ''; googleUser = null; classroomCourses = []; bankActivities = []; savedCourses = []; savedSupplyPlans = [];
   localStorage.removeItem('g_access_token');
   localStorage.removeItem('g_access_token_expiry');
+  localStorage.removeItem('g_user_hint');
   refreshGoogleUi(); renderBankList(); renderCourseOptions(); renderSupplyPlanOptions();
   document.getElementById('classroom-course-select').innerHTML = '<option value="">Choisir un cours</option>';
   const shareSlot = document.getElementById('share-to-classroom-slot'); if (shareSlot) shareSlot.innerHTML = '';
@@ -2256,7 +2263,7 @@ async function afterGoogleLogin(refreshUi = true) {
     throw e;
   }
 }
-async function loadGoogleProfile() { googleUser = await apiFetch('https://openidconnect.googleapis.com/v1/userinfo'); }
+async function loadGoogleProfile() { googleUser = await apiFetch('https://openidconnect.googleapis.com/v1/userinfo'); if (googleUser?.email) localStorage.setItem('g_user_hint', googleUser.email); }
 function refreshGoogleUi() {
   const pill = document.getElementById('google-user-pill');
   const btnIn = document.getElementById('btn-google-connect');
@@ -2818,6 +2825,24 @@ function brancherAutocompleteActivite(row) {
       }
       if (e.key === 'Escape') {
         closeMenu();
+        return;
+      }
+    }
+
+    if (e.key === 'Enter') {
+      const rows = [...document.querySelectorAll('.activity-row')];
+      const currentRow = editor.closest('.activity-row');
+      const currentIndex = rows.indexOf(currentRow);
+      const isLastRow = currentIndex === rows.length - 1;
+      if (isLastRow) {
+        e.preventDefault();
+        ajouterActivite();
+        const nextRow = [...document.querySelectorAll('.activity-row')][currentIndex + 1];
+        const nextEditor = nextRow?.querySelector('.rich-editor');
+        if (nextEditor) {
+          nextEditor.focus();
+          activeActivityEditor = nextEditor;
+        }
         return;
       }
     }
@@ -3596,6 +3621,8 @@ const maybeConnectSilently = async () => {
     if (hasStoredToken) setGoogleConnecting(false);
   }
 };
+// Reconnexion silencieuse automatique au chargement
+maybeConnectSilently();
 function openChangelog() {
   document.getElementById('changelog-overlay').classList.add('open');
 }
