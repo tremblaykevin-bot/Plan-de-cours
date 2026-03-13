@@ -459,6 +459,35 @@
     color: var(--red);
     background: #fff5f5;
   }
+  /* Infobulle case à cocher — conserver les cases */
+  .keep-form-label {
+    position: relative;
+    cursor: pointer;
+  }
+  .keep-form-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 7px);
+    left: 0;
+    width: 250px;
+    background: #3c4043;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    line-height: 1.4;
+    padding: 6px 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    pointer-events: none;
+    z-index: 9999;
+    white-space: normal;
+  }
+  .keep-form-label:hover .keep-form-tooltip {
+    display: block;
+  }
+
   /* Infobulle style Google */
   .btn-clear-activities::after {
     content: attr(data-tooltip);
@@ -1228,6 +1257,13 @@
         </div>
         <p class="hint">Choisissez un cours déjà généré pour remplir automatiquement les champs.</p>
       </div>
+      <div class="checkbox-row" style="margin-top:10px;">
+        <input type="checkbox" id="keep-form-filled" onchange="toggleKeepFormFilled()">
+        <span class="keep-form-label" onclick="document.getElementById('keep-form-filled').click()">
+          Conserver les informations entre les sessions
+          <span class="keep-form-tooltip">Les activités, le devoir et le rappel restent en mémoire d'une visite à l'autre. Décochez pour repartir d'un formulaire vide à chaque ouverture.</span>
+        </span>
+      </div>
     </div>
 
     <!-- Activities -->
@@ -1453,6 +1489,7 @@ const COURSES_SHEET = 'Cours';
 const SUPPLY_PLANS_SHEET = 'PlanificationsSuppleance';
 const APP_MARKER = 'CARDINAL_ROY_PLAN_COURS_V1';
 const LOCAL_PLAN_KEY = 'cardinal_plan_form_state_v2';
+const KEEP_FORM_PREF_KEY = 'cardinal_keep_form_filled_v1';
 const PRIVILEGED_EMOJI_EMAIL = 'tremblay.kevin@cscapitale.qc.ca';
 const SUPPLY_PROFILE_PREFIX = 'cardinal_supply_profile_v1_';
 let currentPlanMode = 'course';
@@ -3110,6 +3147,13 @@ function restaurerPlanLocal() {
   }
 }
 
+function toggleKeepFormFilled() {
+  const cb = document.getElementById('keep-form-filled');
+  const enabled = cb && cb.checked;
+  localStorage.setItem(KEEP_FORM_PREF_KEY, enabled ? '1' : '0');
+  if (!enabled) effacerPlanLocal();
+}
+
 function effacerPlanLocal() {
   localStorage.removeItem(LOCAL_PLAN_KEY);
 }
@@ -3626,7 +3670,15 @@ if (reuseCourseSelectEl) reuseCourseSelectEl.addEventListener('change', (e) => {
 
 initDate();
 initActivites();
-restaurerPlanLocal();
+// Init case "Conserver les informations entre les sessions"
+(function() {
+  const pref = localStorage.getItem(KEEP_FORM_PREF_KEY);
+  const cb = document.getElementById('keep-form-filled');
+  // Coché par défaut si jamais défini
+  const enabled = pref === null ? true : pref === '1';
+  if (cb) cb.checked = enabled;
+  if (enabled) restaurerPlanLocal();
+})();
 applySchoolSelection(getCurrentSchoolKey());
 refreshGoogleUi();
 renderBankList();
@@ -3826,6 +3878,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeChang
       const state = getPlanStateForLocal();
       const hasContent = (state.activities || []).some(a => a && a.replace(/<[^>]+>/g,'').trim());
       if (!hasContent) return;
+      if (localStorage.getItem(KEEP_FORM_PREF_KEY) === '0') return;
       localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify(state));
       _lastAutoSave = Date.now();
       const el = document.getElementById('autosave-status');
