@@ -703,6 +703,80 @@
   .hint { font-size: 0.75rem; color: #aaa; margin-top: 4px; }
 
   /* Changelog modal */
+  /* Confirm reset modal */
+  .confirm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+  }
+  .confirm-overlay.open { display: flex; }
+  .confirm-modal {
+    background: #fff;
+    border-radius: 14px;
+    padding: 28px 32px 24px;
+    max-width: 380px;
+    width: calc(100vw - 40px);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+    font-family: 'DM Sans', sans-serif;
+    animation: confirm-pop 0.15s ease;
+  }
+  @keyframes confirm-pop {
+    from { transform: scale(0.93); opacity: 0; }
+    to   { transform: scale(1);    opacity: 1; }
+  }
+  .confirm-modal-icon {
+    width: 40px; height: 40px;
+    background: #fff5f5;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+    color: var(--red);
+  }
+  .confirm-modal h3 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.15rem;
+    font-weight: 400;
+    color: var(--dark);
+    margin-bottom: 8px;
+  }
+  .confirm-modal p {
+    font-size: 0.88rem;
+    color: #777;
+    line-height: 1.55;
+    margin-bottom: 22px;
+  }
+  .confirm-modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .btn-confirm-cancel {
+    border: 1.5px solid var(--border);
+    background: #fff;
+    color: var(--mid);
+    border-radius: 8px;
+    padding: 9px 18px;
+    font: 600 0.88rem 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-confirm-cancel:hover { border-color: #bbb; color: #333; }
+  .btn-confirm-ok {
+    border: none;
+    background: var(--red);
+    color: #fff;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font: 600 0.88rem 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-confirm-ok:hover { background: #a50d24; }
+
   .changelog-overlay {
     display: none;
     position: fixed;
@@ -825,12 +899,41 @@
   .google-status.ok { color:#137333; } .google-status.err { color:#b3261e; }
   .btn-google, .btn-secondary-soft, .btn-classroom { border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; font-family:inherit; }
   .btn-google { background:#1a73e8; color:#fff; } .btn-secondary-soft { background:#f4efea; color:#4f443c; } .btn-classroom { background:#0f9d58; color:#fff; }
+  .btn-google.loading { background:#5a9de8; cursor:not-allowed; pointer-events:none; opacity:0.85; }
+  @keyframes g-spin { to { transform:rotate(360deg); } }
+  .g-spinner { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; animation:g-spin 0.7s linear infinite; vertical-align:middle; margin-right:5px; }
+  #right-tab-preview .google-card { margin-top: 32px; border-top: 2px solid var(--border); border-radius: 0 0 14px 14px; padding-top: 20px; }
   .bank-box { margin-top:18px; border-top:1px solid #ece7e2; padding-top:14px; }
   .bank-list { max-height:180px; overflow:auto; border:1px solid #e7e1da; border-radius:10px; background:#fff; }
-  .bank-item { padding:10px 12px; border-bottom:1px solid #f0ece8; cursor:pointer; }
+  .bank-item { padding:10px 12px; border-bottom:1px solid #f0ece8; cursor:grab; position:relative; }
   .bank-item:last-child { border-bottom:0; }
   .bank-item:hover { background:#f8f5f2; }
   .bank-item.selected { background:#fff0f2; border-left:3px solid var(--red); padding-left:9px; }
+  .bank-item.dragging-bank { opacity:0.4; background:#fdf6f0; }
+  /* Hover preview tooltip */
+  .bank-item .bank-preview-tip {
+    display:none; position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%);
+    background:#1e1e1e; color:#fff; font-size:0.78rem; padding:7px 10px; border-radius:8px;
+    max-width:220px; white-space:pre-wrap; word-break:break-word; z-index:9000;
+    box-shadow:0 4px 16px rgba(0,0,0,.2); pointer-events:none; line-height:1.45;
+  }
+  .bank-item .bank-preview-tip::before {
+    content:''; position:absolute; right:100%; top:50%; transform:translateY(-50%);
+    border:5px solid transparent; border-right-color:#1e1e1e;
+  }
+  .bank-item:hover .bank-preview-tip { display:block; }
+  /* Drop zone on activities-list */
+  #activities-list.bank-drag-over { outline:2.5px dashed var(--red); outline-offset:4px; border-radius:8px; background:#fff8f8; }
+  /* Activities empty state */
+  #activities-empty-hint {
+    text-align:center; padding:18px 12px; color:#ccc; font-size:0.82rem;
+    border:2px dashed #e8e2dc; border-radius:10px; margin-bottom:8px;
+    transition:opacity .3s;
+  }
+  #activities-empty-hint svg { display:block; margin:0 auto 8px; opacity:.4; }
+  /* Autosave indicator pulse */
+  #autosave-status { font-size:0.72rem; color:#bbb; text-align:right; min-height:14px; margin-top:4px; transition:color .4s; }
+  #autosave-status.active { color:#2d7a3a; }
   .bank-search { width:100%; padding:8px 12px; border:1.5px solid var(--border); border-radius:7px; font:400 0.88rem 'DM Sans',sans-serif; margin-bottom:8px; outline:none; }
   .bank-search:focus { border-color:var(--red); }
   .btn-delete-bank { border:none; border-radius:10px; padding:10px 12px; background:#e5e0db; color:#aaa; font:600 0.84rem 'DM Sans',sans-serif; cursor:not-allowed; white-space:nowrap; transition:background 0.15s,color 0.15s; }
@@ -839,13 +942,61 @@
   #btn-add-bank-to-plan.active { background:#2d6a4f; color:#fff; cursor:pointer; }
   #btn-add-bank-to-plan.active:hover { background:#1e4d39; }
   .bank-meta { font-size:.74rem; color:#857a72; }
-  .activity-row { position:relative; transition:transform .16s ease, box-shadow .16s ease, background-color .16s ease; }
-  .activity-row.dragging { opacity:.7; background:#fbf6f2; box-shadow:0 8px 24px rgba(0,0,0,.08); }
-  .activity-row.drag-over { outline:2px dashed #d67a42; outline-offset:3px; background:#fff8f3; }
+  /* ── Drag & drop amélioré ── */
+  .activity-row { position:relative; transition:transform .18s ease, box-shadow .18s ease, background-color .18s ease, opacity .18s ease; }
+  .activity-row.dragging { opacity:.3; background:#fdf6f0; box-shadow:0 12px 32px rgba(0,0,0,.13); transform:scale(1.015) rotate(0.4deg); border-radius:8px; z-index:10; }
+  #activities-list.has-drag .activity-row:not(.dragging) { opacity:.5; }
+  #activities-list.has-drag .activity-row.drag-over:not(.dragging) { opacity:1; background:#fff0f2; border-radius:8px; box-shadow:0 0 0 2px var(--red); }
+  .activity-row.drag-over-top::before, .activity-row.drag-over-bottom::after { height:3px; box-shadow:0 0 6px rgba(200,16,46,.4); }
   .activity-row .rich-editor { flex:1 1 auto; }
-  .activity-handle { margin-left:8px; background:transparent; border:0; color:#a2968c; display:inline-flex; align-items:center; justify-content:center; cursor:grab; padding:6px; border-radius:8px; transition:background-color .16s ease, color .16s ease, transform .16s ease; }
-  .activity-row:hover .activity-handle { background:#f5efea; color:#7b6d63; } .activity-handle:active { cursor:grabbing; transform:scale(.96); }
-  .activity-handle svg { width:16px; height:16px; pointer-events:none; }
+  .activity-handle { margin-left:8px; background:transparent; border:0; color:#c4b8b0; display:inline-flex; align-items:center; justify-content:center; cursor:grab; padding:6px; border-radius:8px; transition:background-color .16s ease, color .16s ease, transform .16s ease; }
+  .activity-row:hover .activity-handle { background:#f0e8e2; color:#8a7368; }
+  .activity-handle:hover { background:#e8ddd7 !important; color:#6b5349 !important; transform:scale(1.1); }
+  .activity-handle:active { cursor:grabbing; transform:scale(.96); }
+  .activity-handle svg { width:18px; height:18px; pointer-events:none; }
+
+  /* Save indicator */
+  .save-indicator {
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-size:0.76rem;
+    color:#bbb;
+    margin-top:8px;
+    opacity:0;
+    transition:opacity .3s;
+    pointer-events:none;
+    user-select:none;
+  }
+  .save-indicator.visible { opacity:1; }
+  .save-indicator svg { flex-shrink:0; }
+
+
+  /* ── Toast notifications ── */
+  #toast-container { position:fixed; bottom:24px; right:24px; z-index:99997; display:flex; flex-direction:column; gap:10px; pointer-events:none; }
+  .toast { background:#1e1e1e; color:#fff; padding:12px 16px; border-radius:10px; font:500 0.86rem 'DM Sans',sans-serif; box-shadow:0 4px 24px rgba(0,0,0,.22); display:flex; align-items:center; gap:9px; max-width:300px; pointer-events:auto; border-left:3px solid #555; }
+  .toast.ok   { border-left-color:#2d7a3a; }
+  .toast.err  { border-left-color:var(--red); }
+  .toast.info { border-left-color:#1a73e8; }
+  .toast.warn { border-left-color:#e87722; }
+  @keyframes toastIn  { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes toastOut { from{opacity:1;transform:translateX(0)}    to{opacity:0;transform:translateX(16px)} }
+  .toast { animation:toastIn 0.22s ease; }
+
+  /* ── Save indicator ── */
+  #save-indicator { display:block; font-size:0.73rem; color:#ccc; margin-top:7px; text-align:right; min-height:15px; transition:color 0.4s, opacity 0.4s; opacity:0; }
+  #save-indicator.visible { opacity:1; }
+  #save-indicator.saved { color:#2d7a3a; }
+  #save-indicator.saving { color:#aaa; }
+
+  /* ── Undo button ── */
+  #btn-undo { display:none; margin-top:8px; width:100%; padding:8px; border-radius:7px; border:1.5px dashed #d0c8c0; background:none; color:#999; font:500 0.82rem 'DM Sans',sans-serif; cursor:pointer; transition:border-color .2s, color .2s; letter-spacing:.01em; }
+  #btn-undo:hover { border-color:#b0a090; color:#666; }
+  #btn-undo svg { vertical-align:middle; margin-right:5px; }
+
+  /* ── Preview fade-in animation ── */
+  @keyframes fadeInPreview { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:translateY(0)} }
+  #plan-preview.anim { animation:fadeInPreview 0.32s ease; }
   .autocomplete-menu { position:absolute; left:42px; right:74px; top:calc(100% - 4px); z-index:40; background:#fff; border:1px solid #ddd4cc; border-radius:10px; box-shadow:0 10px 24px rgba(0,0,0,.08); max-height:360px; overflow-y:auto; display:none; }
   .autocomplete-item { padding:9px 12px; cursor:pointer; border-bottom:1px solid #f2eeea; }
   .autocomplete-item:last-child { border-bottom:0; }
@@ -1021,8 +1172,19 @@
     <!-- Activities -->
     <div class="activities-section">
       <label>Activités du cours</label>
+      <div id="activities-empty-hint">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/>
+          <line x1="9" y1="13" x2="13" y2="13"/>
+        </svg>
+        Aucune activité — cliquez sur <em>＋ Ajouter</em><br>ou glissez une activité depuis la banque
+      </div>
       <div id="activities-list"></div>
       <button class="btn-add" onclick="ajouterActivite()">＋ Ajouter une activité</button>
+      <button id="btn-undo" onclick="popUndo()" title="Annuler (Ctrl+Z)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3 13C5.5 6.5 14 4 21 9"/></svg>
+        Annuler la dernière action
+      </button>
     </div>
 
     <!-- Devoir -->
@@ -1046,6 +1208,8 @@
     </div>
 
     <button class="btn-generate" onclick="generer()">Générer le plan de cours</button>
+    <div class="save-indicator" id="save-indicator"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span id="save-indicator-text">Sauvegardé</span></div>
+    <div id="autosave-status"></div>
     </div>
     <div id="left-plan-supply" style="display:none;"></div>
   </div>
@@ -1316,20 +1480,9 @@ function closeSchoolSelector() {
   }
   if (btn) btn.setAttribute('aria-expanded', 'false');
 }
-async function saveSchoolToSheet(key) {
-  if (!appSpreadsheetId || !googleAccessToken) return;
-  apiFetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${appSpreadsheetId}/values/${encodeURIComponent(CONFIG_SHEET+'!A7:B7')}?valueInputOption=USER_ENTERED`,
-    { method: 'PUT', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ values: [['selected_school', key]] }) }
-  ).catch(() => {});
-}
 function changeSchool(key) {
   applySchoolSelection(key);
   closeSchoolSelector();
-  if (googleAccessToken && appSpreadsheetId) {
-    saveSchoolToSheet(key);
-  }
 }
 document.addEventListener('click', (e) => {
   const wrap = document.getElementById('school-select-wrap');
@@ -1566,6 +1719,7 @@ function ajouterActivite(prefillHtml = '') {
   if (prefillHtml) editor.innerHTML = prefillHtml;
   editor.addEventListener('focus', () => { activeActivityEditor = editor; });
   editor.addEventListener('click', () => { activeActivityEditor = editor; });
+  pushUndo();
   list.appendChild(row);
   brancherDragActivite(row);
   brancherAutocompleteActivite(row);
@@ -1574,6 +1728,7 @@ function ajouterActivite(prefillHtml = '') {
 }
 
 function supprimerActivite(btn) {
+  pushUndo();
   btn.closest('.activity-row').remove();
   reindexActivites();
   sauvegarderPlanLocal();
@@ -1585,6 +1740,14 @@ function reindexActivites() {
     row.querySelector('.activity-num').textContent = NUMERO_EMOJIS[i];
     row.querySelector('.rich-editor').dataset.placeholder = `Activité ${i + 1}…`;
   });
+  _updateActivitiesEmptyState();
+}
+
+function _updateActivitiesEmptyState() {
+  const hint = document.getElementById('activities-empty-hint');
+  if (!hint) return;
+  const hasRows = document.querySelector('#activities-list .activity-row');
+  hint.style.display = hasRows ? 'none' : 'block';
 }
 
 function brancherDragActivite(row) {
@@ -1594,11 +1757,13 @@ function brancherDragActivite(row) {
   row.addEventListener('dragstart', (e) => {
     draggedActivity = row;
     row.classList.add('dragging');
+    document.getElementById('activities-list').classList.add('has-drag');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', 'activity');
   });
   row.addEventListener('dragend', () => {
     row.classList.remove('dragging');
+    document.getElementById('activities-list').classList.remove('has-drag');
     document.querySelectorAll('.activity-row').forEach(r => r.classList.remove('drag-over','drag-over-top','drag-over-bottom'));
     draggedActivity = null;
   });
@@ -1615,6 +1780,7 @@ function brancherDragActivite(row) {
     e.preventDefault();
     row.classList.remove('drag-over','drag-over-top','drag-over-bottom');
     if (!draggedActivity || draggedActivity === row) return;
+    pushUndo();
     const rect = row.getBoundingClientRect();
     const before = e.clientY < rect.top + rect.height / 2;
     row.parentNode.insertBefore(draggedActivity, before ? row : row.nextSibling);
@@ -1764,7 +1930,11 @@ async function generer() {
     for (let i = 1; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
   }
 
-  document.getElementById('plan-preview').innerHTML = previewHTML;
+  const planPreview = document.getElementById('plan-preview');
+  planPreview.innerHTML = previewHTML;
+  planPreview.classList.remove('anim');
+  void planPreview.offsetWidth; // force reflow
+  planPreview.classList.add('anim');
   clipboardHTML = previewHTML;
   latestGeneratedHtml = previewHTML;
   latestGeneratedText = buildCurrentPlanTextForClassroom();
@@ -1814,6 +1984,66 @@ function richToLines(html) {
 }
 
 // ── Format toolbar ──
+
+/* ── Toast notifications ── */
+function showToast(msg, type = 'info', duration = 4000) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const icons = { ok: '✅', err: '❌', info: 'ℹ️', warn: '⚠️' };
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span style="font-size:1.05em">${icons[type] || icons.info}</span><span>${msg}</span>`;
+  container.appendChild(t);
+  const remove = () => {
+    t.style.animation = 'toastOut 0.22s ease forwards';
+    setTimeout(() => t.remove(), 230);
+  };
+  t.addEventListener('click', remove);
+  setTimeout(remove, duration);
+}
+
+/* ── Undo stack ── */
+const MAX_UNDO = 8;
+let undoStack = [];
+let _restoringUndo = false;
+
+function snapshotActivites() {
+  const rows = document.querySelectorAll('#activities-list .activity-row');
+  return Array.from(rows).map(r => r.querySelector('.rich-editor').innerHTML);
+}
+
+function pushUndo() {
+  if (_restoringUndo) return;
+  undoStack.push(snapshotActivites());
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  const btn = document.getElementById('btn-undo');
+  if (btn) btn.style.display = 'block';
+}
+
+function popUndo() {
+  if (!undoStack.length) return;
+  const snapshot = undoStack.pop();
+  const list = document.getElementById('activities-list');
+  list.innerHTML = '';
+  _restoringUndo = true;
+  snapshot.forEach(html => ajouterActivite(html));
+  _restoringUndo = false;
+  reindexActivites();
+  sauvegarderPlanLocal();
+  const btn = document.getElementById('btn-undo');
+  if (btn) btn.style.display = undoStack.length ? 'block' : 'none';
+  showToast('Action annulée', 'info', 2500);
+}
+
+document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement?.tagName?.toLowerCase();
+  const editable = document.activeElement?.isContentEditable;
+  if ((tag === 'input' || tag === 'textarea' || editable)) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    popUndo();
+  }
+});
 
 function setStatus(id, msg, type='') {
   const el = document.getElementById(id);
@@ -1888,11 +2118,6 @@ async function loadSupplyProfileFromSheet() {
       const subjectEl = document.getElementById('supply-subject');
       if (teacherEl && !teacherEl.value.trim() && teacher) teacherEl.value = teacher;
       if (subjectEl && !subjectEl.value.trim() && subject) subjectEl.value = subject;
-    }
-    // Restore school preference saved in the sheet
-    const savedSchool = map['selected_school'];
-    if (savedSchool && SCHOOL_OPTIONS[savedSchool]) {
-      applySchoolSelection(savedSchool);
     }
   } catch(e) { console.warn('loadSupplyProfileFromSheet:', e); }
 }
@@ -1971,15 +2196,31 @@ async function trySilentGoogleRefresh() {
     return false;
   }
 }
+function setGoogleConnecting(connecting) {
+  const btn = document.getElementById('btn-google-connect');
+  if (!btn) return;
+  if (connecting) {
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.innerHTML = `<span class="g-spinner"></span> Connexion en cours…`;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    refreshGoogleUi();
+  }
+}
 async function googleConnect() {
   if (googleUser?.email && googleAccessToken) { await googleDisconnect(); return; }
   if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === 'REMPLACER_PAR_VOTRE_CLIENT_ID') { setStatus('google-status', "Remplacez d'abord le CLIENT_ID Google dans index.html.", 'err'); return; }
   if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) { setStatus('google-status', "La librairie Google ne s'est pas chargée.", 'err'); return; }
+  setGoogleConnecting(true);
   try {
     await requestGoogleToken(googleAccessToken ? '' : 'consent select_account');
     await afterGoogleLogin(true);
   } catch (e) {
     setStatus('google-status', 'Erreur Google: ' + (e?.message || 'inconnue'), 'err');
+  } finally {
+    setGoogleConnecting(false);
   }
 }
 async function googleDisconnect() {
@@ -1991,6 +2232,7 @@ async function googleDisconnect() {
   document.getElementById('classroom-course-select').innerHTML = '<option value="">Choisir un cours</option>';
   const shareSlot = document.getElementById('share-to-classroom-slot'); if (shareSlot) shareSlot.innerHTML = '';
   setStatus('google-status', 'Déconnecté.', ''); setStatus('bank-status', '', ''); setStatus('classroom-status', '', '');
+  showToast('Déconnecté de Google', 'info');
   updateRoleBasedUi();
   applySupplyDefaultsForCurrentUser(true);
 }
@@ -2004,6 +2246,8 @@ async function afterGoogleLogin(refreshUi = true) {
     if (refreshUi) refreshGoogleUi();
     updateRoleBasedUi();
     applySupplyDefaultsForCurrentUser(false);
+    const displayName = googleUser?.name || googleUser?.email || 'Google';
+    showToast(`Connecté en tant que ${displayName}`, 'ok');
     setStatus('google-status', '', '');
   } catch (e) {
     googleUser = null;
@@ -2466,7 +2710,21 @@ function renderBankList() {
     const div = document.createElement('div');
     div.className = 'bank-item' + (a.text === selectedBankText ? ' selected' : '');
     div.textContent = a.text;
+    div.draggable = true;
+    // Hover preview tooltip
+    const tip = document.createElement('span');
+    tip.className = 'bank-preview-tip';
+    tip.textContent = a.text;
+    div.appendChild(tip);
+    // Click to select
     div.addEventListener('click', () => selectBankActivity(a.text));
+    // Drag from bank
+    div.addEventListener('dragstart', (e) => {
+      div.classList.add('dragging-bank');
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData('text/bank-activity', a.text);
+    });
+    div.addEventListener('dragend', () => div.classList.remove('dragging-bank'));
     box.appendChild(div);
   });
 }
@@ -2693,9 +2951,11 @@ async function publishToClassroom() {
       slot.innerHTML = `<div style="margin-top:6px;padding:10px 14px;background:#e6f4ea;border:1px solid #a8d5b5;border-radius:10px;color:#1e6b3a;font-size:0.88rem;font-weight:600;">✅ Plan publié avec succès dans <em>${escapeHtml(courseName)}</em></div>`;
       setTimeout(() => { if (slot) slot.innerHTML = ''; }, 6000);
     }
+    showToast(`Plan publié dans « ${courseName} »`, 'ok');
     setStatus('classroom-status', '', '');
   } catch (e) {
     console.error('Classroom publish error:', e);
+    showToast('Erreur lors de la publication : ' + (e?.message || e), 'err');
     setStatus('classroom-status', 'Erreur lors de la publication : ' + (e?.message || e), 'err');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Publier'; }
@@ -2713,12 +2973,25 @@ function getPlanStateForLocal() {
   };
 }
 
+let _saveDebounceTimer = null;
+let _saveIndicatorTimer = null;
 function sauvegarderPlanLocal() {
-  try {
-    localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify(getPlanStateForLocal()));
-  } catch (e) {
-    console.warn('sauvegarderPlanLocal', e);
-  }
+  clearTimeout(_saveDebounceTimer);
+  _saveDebounceTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify(getPlanStateForLocal()));
+      _showSaveIndicator();
+    } catch (e) {
+      console.warn('sauvegarderPlanLocal', e);
+    }
+  }, 400);
+}
+function _showSaveIndicator() {
+  const el = document.getElementById('save-indicator');
+  if (!el) return;
+  el.classList.add('visible');
+  clearTimeout(_saveIndicatorTimer);
+  _saveIndicatorTimer = setTimeout(() => el.classList.remove('visible'), 2500);
 }
 
 function restaurerPlanLocal() {
@@ -3197,6 +3470,7 @@ function afficherCopie() {
   const btn = document.getElementById('btn-copy');
   btn.classList.add('copied');
   btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Copié !`;
+  showToast('Plan copié dans le presse-papiers', 'ok', 2500);
   setTimeout(() => {
     btn.classList.remove('copied');
     btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copier le plan`;
@@ -3204,6 +3478,13 @@ function afficherCopie() {
 }
 
 function reinitialiser() {
+  document.getElementById('confirm-reset-overlay').classList.add('open');
+}
+function closeConfirmReset() {
+  document.getElementById('confirm-reset-overlay').classList.remove('open');
+}
+function reinitialiserConfirmed() {
+  closeConfirmReset();
   latestGeneratedText = "";
   latestGeneratedHtml = "";
   currentLoadedCourseId = '';
@@ -3301,27 +3582,47 @@ function waitForGoogle(maxMs = 8000) {
 const maybeConnectSilently = async () => {
   const loaded = await waitForGoogle(8000);
   if (!loaded) return;
-  // If stored token is still valid, use it directly
-  if (googleAccessToken && googleTokenExpiry && Date.now() < googleTokenExpiry) {
-    try { await afterGoogleLogin(); return; } catch (err) { /* token may have been revoked */ }
-  }
-  // Try silent refresh (no popup — relies on existing browser Google session)
+  // Only show connecting state if we have a stored token (returning user)
+  const hasStoredToken = !!(googleAccessToken || googleTokenExpiry);
+  if (hasStoredToken) setGoogleConnecting(true);
   try {
-    const ok = await trySilentGoogleRefresh();
-    if (ok) refreshGoogleUi(); // mise à jour visuelle (bouton, pill) après refresh silencieux
-  } catch (e) {}
+    // If stored token is still valid, use it directly
+    if (googleAccessToken && googleTokenExpiry && Date.now() < googleTokenExpiry) {
+      try { await afterGoogleLogin(); return; } catch (err) { /* token may have been revoked */ }
+    }
+    // Try silent refresh (no popup — relies on existing browser Google session)
+    try { await trySilentGoogleRefresh(); } catch (e) {}
+  } finally {
+    if (hasStoredToken) setGoogleConnecting(false);
+  }
 };
-maybeConnectSilently(); // déclencher la reconnexion automatique au chargement
 function openChangelog() {
   document.getElementById('changelog-overlay').classList.add('open');
 }
 function closeChangelog() {
   document.getElementById('changelog-overlay').classList.remove('open');
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeChangelog(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeChangelog(); closeConfirmReset(); } });
 
 
 </script>
+
+<!-- Confirm reset modal -->
+<div class="confirm-overlay" id="confirm-reset-overlay" onclick="if(event.target===this)closeConfirmReset()">
+  <div class="confirm-modal">
+    <div class="confirm-modal-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+      </svg>
+    </div>
+    <h3>Réinitialiser le formulaire ?</h3>
+    <p>Toutes les activités, le devoir et le rappel saisis seront effacés. Cette action est irréversible.</p>
+    <div class="confirm-modal-actions">
+      <button class="btn-confirm-cancel" onclick="closeConfirmReset()">Annuler</button>
+      <button class="btn-confirm-ok" onclick="reinitialiserConfirmed()">Réinitialiser</button>
+    </div>
+  </div>
+</div>
 
 <!-- Changelog modal -->
 <div class="changelog-overlay" id="changelog-overlay" onclick="if(event.target===this)closeChangelog()">
@@ -3331,6 +3632,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeChangel
     <div>
       <span class="changelog-version-badge">v1.0.8</span>
       <span class="changelog-date">Mars 2026</span>
+    </div>
+
+    <div class="changelog-section">
+      <h3>✨ Nouvelles fonctionnalités — v1.0.9</h3>
+      <ul>
+        <li><strong>Animation de génération</strong> — le plan apparaît avec un fondu + légère remontée à chaque génération.</li>
+        <li><strong>Toast notifications</strong> — messages discrets en bas à droite pour connexion Google, déconnexion et publication Classroom. Cliquables pour fermer.</li>
+        <li><strong>Historique undo (Ctrl+Z)</strong> — annule jusqu'à 8 actions sur les activités (ajout, suppression, glisser-déposer). Bouton <em>Annuler la dernière action</em> visible dès qu'une action est effectuée.</li>
+      </ul>
     </div>
 
     <div class="changelog-section">
@@ -3388,5 +3698,55 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeChangel
   &mdash; <button class="changelog-trigger" onclick="openChangelog()">v1.0.8</button>
   &mdash; <a href="https://raw.githubusercontent.com/techno-cardi/Plan-de-cours/main/Guide%20d'utilisation%20-%20G%C3%A9n%C3%A9rateur%20de%20plan%20de%20cours.pdf" target="_blank" style="color:#aaa;text-decoration:none;font-weight:600;" onmouseover="this.style.color='#C0152A'" onmouseout="this.style.color='#aaa'">📄 Guide d'utilisation</a>
 </footer>
+<div id="toast-container"></div>
+<script>
+/* ── Drag depuis banque → activities-list ── */
+(function() {
+  const list = document.getElementById('activities-list');
+  if (!list) return;
+  list.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes('text/bank-activity')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    list.classList.add('bank-drag-over');
+  });
+  list.addEventListener('dragleave', (e) => {
+    if (!list.contains(e.relatedTarget)) list.classList.remove('bank-drag-over');
+  });
+  list.addEventListener('drop', (e) => {
+    list.classList.remove('bank-drag-over');
+    const text = e.dataTransfer.getData('text/bank-activity');
+    if (!text) return;
+    e.preventDefault();
+    insertBankActivityByText(text);
+    showToast('Activité ajoutée depuis la banque', 'info', 2000);
+  });
+})();
+
+/* ── Autosave toutes les 2 minutes ── */
+(function() {
+  let _lastAutoSave = Date.now();
+  setInterval(() => {
+    try {
+      const state = getPlanStateForLocal();
+      const hasContent = (state.activities || []).some(a => a && a.replace(/<[^>]+>/g,'').trim());
+      if (!hasContent) return;
+      localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify(state));
+      _lastAutoSave = Date.now();
+      const el = document.getElementById('autosave-status');
+      if (el) {
+        const h = new Date().getHours().toString().padStart(2,'0');
+        const m = new Date().getMinutes().toString().padStart(2,'0');
+        el.textContent = `Sauvegarde auto à ${h}:${m}`;
+        el.classList.add('active');
+        setTimeout(() => { el.classList.remove('active'); setTimeout(() => { el.textContent = ''; }, 600); }, 3000);
+      }
+    } catch(e) { console.warn('autosave', e); }
+  }, 2 * 60 * 1000);
+})();
+
+/* ── Init empty state ── */
+_updateActivitiesEmptyState();
+</script>
 </body>
 </html>
