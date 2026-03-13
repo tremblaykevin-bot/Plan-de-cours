@@ -426,6 +426,64 @@
     color: #888;
     margin-bottom: 10px;
   }
+  .activities-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .activities-header > span {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #888;
+  }
+  .btn-clear-activities {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1.5px solid var(--border);
+    background: #fff;
+    color: #999;
+    border-radius: 7px;
+    padding: 4px 10px;
+    font: 600 0.75rem 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+    white-space: nowrap;
+  }
+  .btn-clear-activities:hover {
+    border-color: var(--red);
+    color: var(--red);
+    background: #fff5f5;
+  }
+  #clear-activities-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 99999;
+    width: 240px;
+    background: #2a2a2a;
+    color: #fff;
+    font-size: 0.73rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0;
+    text-transform: none;
+    padding: 9px 12px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    pointer-events: none;
+  }
+  #clear-activities-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    right: 16px;
+    border: 5px solid transparent;
+    border-top-color: #2a2a2a;
+  }
 
   .activity-row {
     display: flex;
@@ -1171,7 +1229,14 @@
 
     <!-- Activities -->
     <div class="activities-section">
-      <label>Activités du cours</label>
+      <div class="activities-header">
+        <span>Activités du cours</span>
+        <button class="btn-clear-activities" id="btn-clear-activities" onclick="reinitialiser()" type="button"
+          data-tooltip="Efface les activités, le devoir et le rappel saisis. Les cours déjà sauvegardés dans votre compte ne sont pas affectés.">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Réinitialiser
+        </button>
+      </div>
       <div id="activities-empty-hint">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/>
@@ -3774,6 +3839,30 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeChang
 
 /* ── Init empty state ── */
 /* appelé automatiquement via initActivites() → reindexActivites() */
+
+/* ── Infobulle fixe — bouton Réinitialiser activités ── */
+(function() {
+  const btn = document.getElementById('btn-clear-activities');
+  const tip = document.getElementById('clear-activities-tooltip');
+  if (!btn || !tip) return;
+  tip.textContent = btn.dataset.tooltip || '';
+  let hideTimer;
+  btn.addEventListener('mouseenter', function() {
+    clearTimeout(hideTimer);
+    tip.style.display = 'block';
+    const r = btn.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    let left = r.right - tipW;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = (r.top - tipH - 10) + 'px';
+  });
+  btn.addEventListener('mouseleave', function() {
+    hideTimer = setTimeout(() => { tip.style.display = 'none'; }, 80);
+  });
+})();
 </script>
+<div id="clear-activities-tooltip"></div>
 </body>
 </html>
