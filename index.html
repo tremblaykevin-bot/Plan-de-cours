@@ -3728,18 +3728,49 @@ function waitForGoogle(maxMs = 8000) {
 const maybeConnectSilently = async () => {
   const loaded = await waitForGoogle(8000);
   if (!loaded) return;
-  // Only show connecting state if we have a stored token (returning user)
-  const hasStoredToken = !!(googleAccessToken || googleTokenExpiry);
-  if (hasStoredToken) setGoogleConnecting(true);
-  try {
-    // If stored token is still valid, use it directly
-    if (googleAccessToken && googleTokenExpiry && Date.now() < googleTokenExpiry) {
-      try { await afterGoogleLogin(); return; } catch (err) { /* token may have been revoked */ }
+
+  // ── Cas 1 : token encore valide → connexion immédiate, sans aucune popup ──
+  if (googleAccessToken && googleTokenExpiry && Date.now() < googleTokenExpiry) {
+    setGoogleConnecting(true);
+    try {
+      await afterGoogleLogin(true);
+    } catch (err) {
+      // Token révoqué ou invalide — on nettoie le stockage
+      googleAccessToken = '';
+      localStorage.removeItem('g_access_token');
+      localStorage.removeItem('g_access_token_expiry');
+      refreshGoogleUi();
+    } finally {
+      setGoogleConnecting(false);
     }
-    // Try silent refresh (no popup — relies on existing browser Google session)
-    try { await trySilentGoogleRefresh(); } catch (e) {}
-  } finally {
-    if (hasStoredToken) setGoogleConnecting(false);
+    return;
+  }
+
+  // ── Cas 2 : token expiré mais l'utilisateur était connecté ──
+  // On attend la première interaction (clic / touche) pour tenter un refresh
+  // silencieux — une interaction utilisateur est requise pour éviter le blocage popup.
+  const hadSession = !!(localStorage.getItem('g_access_token') || localStorage.getItem('g_user_hint'));
+  if (hadSession) {
+    setStatus('google-status', 'Session expirée — reconnexion en cours…', '');
+    let _done = false;
+    const _silentOnInteraction = async () => {
+      if (_done) return;
+      _done = true;
+      document.removeEventListener('click',   _silentOnInteraction, { capture: true });
+      document.removeEventListener('keydown', _silentOnInteraction, { capture: true });
+      setGoogleConnecting(true);
+      try {
+        const ok = await trySilentGoogleRefresh();
+        if (!ok) {
+          setStatus('google-status', 'Session expirée — cliquez sur « Se connecter avec Google » pour reprendre.', '');
+          refreshGoogleUi();
+        }
+      } finally {
+        setGoogleConnecting(false);
+      }
+    };
+    document.addEventListener('click',   _silentOnInteraction, { capture: true, once: true });
+    document.addEventListener('keydown', _silentOnInteraction, { capture: true, once: true });
   }
 };
 // Reconnexion silencieuse automatique au chargement
