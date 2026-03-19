@@ -2025,14 +2025,22 @@ async function generer() {
     previewHTML += `<p class="special"><b>Devoir(s) :</b> <b>Aucun devoir</b></p>`;
   } else if (devoirText) {
     const lines = richToLines(devoirHTML);
-    previewHTML += `<p class="special"><b>Devoir(s) :</b> ${lines[0]}</p>`;
-    for (let i = 1; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
+    if (lines.length <= 1) {
+      previewHTML += `<p class="special"><b>Devoir(s) :</b> ${lines[0] || ''}</p>`;
+    } else {
+      previewHTML += `<p class="special"><b>Devoir(s) :</b></p>`;
+      for (let i = 0; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
+    }
   }
 
   if (!pasRappel && rappelText) {
     const lines = richToLines(rappelHTML);
-    previewHTML += `<p class="special"><b>Rappel(s) :</b> ${lines[0]}</p>`;
-    for (let i = 1; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
+    if (lines.length <= 1) {
+      previewHTML += `<p class="special"><b>Rappel(s) :</b> ${lines[0] || ''}</p>`;
+    } else {
+      previewHTML += `<p class="special"><b>Rappel(s) :</b></p>`;
+      for (let i = 0; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
+    }
   }
 
   const planPreview = document.getElementById('plan-preview');
@@ -2291,22 +2299,28 @@ function requestGoogleToken(promptValue) {
     };
     const _tokenParams = { prompt: promptValue };
     const _hint = localStorage.getItem('g_user_hint');
-    if (_hint && !promptValue) _tokenParams.login_hint = _hint;
+    if (_hint) _tokenParams.login_hint = _hint;
     googleTokenClient.requestAccessToken(_tokenParams);
   });
 }
+let _silentRefreshPromise = null;
 async function trySilentGoogleRefresh() {
-  try {
-    await Promise.race([
-      requestGoogleToken('none'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
-    ]);
-    await afterGoogleLogin(false);
-    return true;
-  } catch (e) {
-    // Échec silencieux — pas de popup, l'utilisateur devra se reconnecter manuellement
-    return false;
-  }
+  if (_silentRefreshPromise) return _silentRefreshPromise;
+  _silentRefreshPromise = (async () => {
+    try {
+      await Promise.race([
+        requestGoogleToken('none'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+      ]);
+      await afterGoogleLogin(false);
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      _silentRefreshPromise = null;
+    }
+  })();
+  return _silentRefreshPromise;
 }
 function setGoogleConnecting(connecting) {
   const btn = document.getElementById('btn-google-connect');
@@ -3059,8 +3073,17 @@ function buildCurrentPlanTextForClassroom() {
   const activiteEditors = document.querySelectorAll('.activity-row .rich-editor'); let idx = 0;
   activiteEditors.forEach(ed => { const t = htmlVersTexteClassroom(ed.innerHTML); if (!t) return; const lines = t.split(/\n+/).map(x => x.trim()).filter(Boolean); if (!lines.length) return; texte += NUMERO_EMOJIS[idx] + ' ' + lines[0] + '\n'; for (let i = 1; i < lines.length; i++) texte += '   ' + lines[i] + '\n'; idx++; });
   const pasDevoir = document.getElementById('pas-devoir').checked; const devoir = htmlVersTexteClassroom(document.getElementById('devoir').innerHTML); const pasRappel = document.getElementById('pas-rappel').checked; const rappel = htmlVersTexteClassroom(document.getElementById('rappel').innerHTML);
-  if (pasDevoir) texte += '\nDevoir(s) : Aucun devoir'; else if (devoir) texte += '\nDevoir(s) : ' + devoir.replace(/\n{2,}/g, '\n');
-  if (!pasRappel && rappel) texte += '\nRappel(s) : ' + rappel.replace(/\n{2,}/g, '\n');
+  if (pasDevoir) texte += '\nDevoir(s) : Aucun devoir';
+  else if (devoir) {
+    const dLines = devoir.replace(/\n{2,}/g, '\n').split('\n').map(l => l.trim()).filter(Boolean);
+    if (dLines.length <= 1) texte += '\nDevoir(s) : ' + (dLines[0] || '');
+    else texte += '\nDevoir(s) :\n' + dLines.map(l => '   ' + l).join('\n');
+  }
+  if (!pasRappel && rappel) {
+    const rLines = rappel.replace(/\n{2,}/g, '\n').split('\n').map(l => l.trim()).filter(Boolean);
+    if (rLines.length <= 1) texte += '\nRappel(s) : ' + (rLines[0] || '');
+    else texte += '\nRappel(s) :\n' + rLines.map(l => '   ' + l).join('\n');
+  }
   return texte.trim();
 }
 async function publishToClassroom() {
@@ -3186,10 +3209,22 @@ function buildSupplyWorkTextFromCourse() {
   const rappel = document.getElementById('pas-rappel').checked ? '' : htmlVersTexteClassroom(document.getElementById('rappel').innerHTML).trim();
   if (devoir) {
     if (html) html += '<br>';
-    html += `<div><strong><u>Devoir(s) :</u></strong> ${escapeHtml(devoir.replace(/\n+/g, ' '))}</div>`;
+    const dLines = devoir.split('\n').map(l => l.trim()).filter(Boolean);
+    if (dLines.length <= 1) {
+      html += `<div><strong><u>Devoir(s) :</u></strong> ${escapeHtml(dLines[0] || '')}</div>`;
+    } else {
+      html += `<div><strong><u>Devoir(s) :</u></strong></div>`;
+      dLines.forEach(l => { html += `<div style="margin-left:1.5em">${escapeHtml(l)}</div>`; });
+    }
   }
   if (rappel) {
-    html += `<div><strong><u>Rappel(s) :</u></strong> ${escapeHtml(rappel.replace(/\n+/g, ' '))}</div>`;
+    const rLines = rappel.split('\n').map(l => l.trim()).filter(Boolean);
+    if (rLines.length <= 1) {
+      html += `<div><strong><u>Rappel(s) :</u></strong> ${escapeHtml(rLines[0] || '')}</div>`;
+    } else {
+      html += `<div><strong><u>Rappel(s) :</u></strong></div>`;
+      rLines.forEach(l => { html += `<div style="margin-left:1.5em">${escapeHtml(l)}</div>`; });
+    }
   }
   return html;
 }
@@ -3747,30 +3782,20 @@ const maybeConnectSilently = async () => {
   }
 
   // ── Cas 2 : token expiré mais l'utilisateur était connecté ──
-  // On attend la première interaction (clic / touche) pour tenter un refresh
-  // silencieux — une interaction utilisateur est requise pour éviter le blocage popup.
+  // Tentative de refresh silencieux immédiat (prompt:none ne nécessite pas d'interaction utilisateur)
   const hadSession = !!(localStorage.getItem('g_access_token') || localStorage.getItem('g_user_hint'));
   if (hadSession) {
-    setStatus('google-status', 'Session expirée — reconnexion en cours…', '');
-    let _done = false;
-    const _silentOnInteraction = async () => {
-      if (_done) return;
-      _done = true;
-      document.removeEventListener('click',   _silentOnInteraction, { capture: true });
-      document.removeEventListener('keydown', _silentOnInteraction, { capture: true });
-      setGoogleConnecting(true);
-      try {
-        const ok = await trySilentGoogleRefresh();
-        if (!ok) {
-          setStatus('google-status', 'Session expirée — cliquez sur « Se connecter avec Google » pour reprendre.', '');
-          refreshGoogleUi();
-        }
-      } finally {
-        setGoogleConnecting(false);
+    setStatus('google-status', 'Reconnexion en cours…', '');
+    setGoogleConnecting(true);
+    try {
+      const ok = await trySilentGoogleRefresh();
+      if (!ok) {
+        setStatus('google-status', 'Session expirée — cliquez sur « Se connecter avec Google » pour reprendre.', '');
+        refreshGoogleUi();
       }
-    };
-    document.addEventListener('click',   _silentOnInteraction, { capture: true, once: true });
-    document.addEventListener('keydown', _silentOnInteraction, { capture: true, once: true });
+    } finally {
+      setGoogleConnecting(false);
+    }
   }
 };
 // Reconnexion silencieuse automatique au chargement
