@@ -1167,7 +1167,6 @@
 </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>window.___gcfg = { parsetags: 'explicit' };</script>
-  <script src="https://apis.google.com/js/platform.js"></script>
 </head>
 <body>
 
@@ -1261,7 +1260,7 @@
         <input type="checkbox" id="keep-form-filled" onchange="toggleKeepFormFilled()">
         <span class="keep-form-label" onclick="document.getElementById('keep-form-filled').click()">
           Conserver les informations entre les sessions
-          <span class="keep-form-tooltip">Les activités, le devoir et le rappel restent en mémoire d'une visite à l'autre. Décochez pour repartir d'un formulaire vide à chaque ouverture.</span>
+          <span class="keep-form-tooltip">Les activités, les options du formulaire, la date, le numéro de cours, le devoir, le rappel et la planification de suppléance restent en mémoire d'une visite à l'autre. Décochez pour repartir d'un formulaire vide à chaque ouverture.</span>
         </span>
       </div>
     </div>
@@ -1470,6 +1469,7 @@ function setPlanMode(mode) {
   currentPlanMode = mode === 'supply' ? 'supply' : 'course';
   updatePlanModeButtons();
   switchRightTab('preview');
+  sauvegarderPlanLocal();
 }
 function switchRightTab(tab) {
   const isPreview = tab === 'preview';
@@ -1488,6 +1488,7 @@ const CONFIG_SHEET = 'Config';
 const COURSES_SHEET = 'Cours';
 const SUPPLY_PLANS_SHEET = 'PlanificationsSuppleance';
 const APP_MARKER = 'CARDINAL_ROY_PLAN_COURS_V1';
+const GOOGLE_SESSION_KEY = 'cardinal_google_session_v1';
 const LOCAL_PLAN_KEY = 'cardinal_plan_form_state_v2';
 const KEEP_FORM_PREF_KEY = 'cardinal_keep_form_filled_v1';
 const PRIVILEGED_EMOJI_EMAIL = 'tremblay.kevin@cscapitale.qc.ca';
@@ -1588,6 +1589,7 @@ function closeSchoolSelector() {
 function changeSchool(key) {
   applySchoolSelection(key);
   closeSchoolSelector();
+  sauvegarderPlanLocal();
 }
 document.addEventListener('click', (e) => {
   const wrap = document.getElementById('school-select-wrap');
@@ -1751,7 +1753,7 @@ let sdpView = 'days';
 let sdpViewYear = sdpDate.getFullYear();
 let sdpOpen = false;
 function initSupplyDate() { document.getElementById('supply-date').value = formatDateStr(sdpDate); }
-function shiftSupplyDay(delta) { sdpDate.setDate(sdpDate.getDate() + delta); document.getElementById('supply-date').value = formatDateStr(sdpDate); if (sdpOpen) renderSupplyCalendar(); }
+function shiftSupplyDay(delta) { sdpDate.setDate(sdpDate.getDate() + delta); document.getElementById('supply-date').value = formatDateStr(sdpDate); sauvegarderPlanLocal(); if (sdpOpen) renderSupplyCalendar(); }
 function toggleSupplyPicker() { sdpOpen = !sdpOpen; const popup = document.getElementById('supply-date-picker-popup'); if (sdpOpen) { sdpView = 'days'; sdpViewYear = sdpDate.getFullYear(); renderSupplyCalendar(); popup.style.display = 'block'; } else { popup.style.display = 'none'; } }
 function closeSupplyPicker() { sdpOpen = false; const popup = document.getElementById('supply-date-picker-popup'); if (popup) popup.style.display = 'none'; }
 function renderSupplyCalendar() { const popup = document.getElementById('supply-date-picker-popup'); const today = new Date(); popup.onclick = function(e) { e.stopPropagation(); }; if (sdpView === 'days') { const y = sdpDate.getFullYear(); const m = sdpDate.getMonth(); const firstDay = new Date(y, m, 1).getDay(); const daysInMonth = new Date(y, m + 1, 0).getDate(); const daysInPrev = new Date(y, m, 0).getDate(); let html = `<div class="dp-header"><button class="dp-nav" onclick="sdpNavMonth(-1)">&#8249;</button><span class="dp-title" onclick="sdpSetView('months')">${MOIS_NOMS[m]} ${y}</span><button class="dp-nav" onclick="sdpNavMonth(1)">&#8250;</button></div><div class="dp-grid">`; JOURS_NOMS.forEach(j => { html += `<div class="dp-day-label">${j}</div>`; }); for (let i = firstDay - 1; i >= 0; i--) html += `<button class="dp-day dp-other-month">${daysInPrev - i}</button>`; for (let d = 1; d <= daysInMonth; d++) { const isToday = d === today.getDate() && m === today.getMonth() && y === today.getFullYear(); const isSel = d === sdpDate.getDate() && m === sdpDate.getMonth() && y === sdpDate.getFullYear(); const cls = (isToday ? ' dp-today' : '') + (isSel ? ' dp-selected' : ''); html += `<button class="dp-day${cls}" onclick="sdpPickDay(${d})">${d}</button>`; } const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7; for (let d = 1; d <= totalCells - firstDay - daysInMonth; d++) html += `<button class="dp-day dp-other-month">${d}</button>`; html += '</div>'; popup.innerHTML = html; } else if (sdpView === 'months') { let html = `<div class="dp-header"><button class="dp-nav" onclick="sdpNavYear(-1)">&#8249;</button><span class="dp-title" onclick="sdpSetView('years')">${sdpDate.getFullYear()}</span><button class="dp-nav" onclick="sdpNavYear(1)">&#8250;</button></div><div class="dp-month-grid">`; MOIS_NOMS.forEach((n, i) => { const isSel = i === sdpDate.getMonth() && sdpDate.getFullYear() === sdpViewYear; html += `<button class="dp-month-btn${isSel ? ' dp-sel' : ''}" onclick="sdpPickMonth(${i})">${n.slice(0,3)}</button>`; }); html += '</div>'; popup.innerHTML = html; } else { const startY = Math.floor(sdpDate.getFullYear() / 12) * 12; let html = `<div class="dp-header"><button class="dp-nav" onclick="sdpNavYearPage(-1)">&#8249;</button><span class="dp-title">${startY}–${startY+11}</span><button class="dp-nav" onclick="sdpNavYearPage(1)">&#8250;</button></div><div class="dp-year-grid">`; for (let y = startY; y < startY + 12; y++) { const isSel = y === sdpDate.getFullYear(); html += `<button class="dp-year-btn${isSel ? ' dp-sel' : ''}" onclick="sdpPickYear(${y})">${y}</button>`; } html += '</div>'; popup.innerHTML = html; } }
@@ -1761,7 +1763,7 @@ function sdpNavYearPage(delta) { sdpDate.setFullYear(sdpDate.getFullYear() + del
 function sdpSetView(v) { sdpView = v; renderSupplyCalendar(); }
 function sdpPickMonth(m) { sdpDate.setMonth(m); sdpViewYear = sdpDate.getFullYear(); sdpView = 'days'; renderSupplyCalendar(); }
 function sdpPickYear(y) { sdpDate.setFullYear(y); sdpView = 'months'; renderSupplyCalendar(); }
-function sdpPickDay(d) { sdpDate.setDate(d); document.getElementById('supply-date').value = formatDateStr(sdpDate); closeSupplyPicker(); }
+function sdpPickDay(d) { sdpDate.setDate(d); document.getElementById('supply-date').value = formatDateStr(sdpDate); sauvegarderPlanLocal(); closeSupplyPicker(); }
 
 // Close picker on outside click - works because popup stops propagation internally
 document.addEventListener('click', function(e) {
@@ -1904,8 +1906,9 @@ function toggleSansNumero() {
     input.value = '';
     if (hint) hint.style.display = 'none';
   }
-
+  sauvegarderPlanLocal();
 }
+
 
 function toggleDevoir() {
   const cb = document.getElementById('pas-devoir');
@@ -1918,6 +1921,7 @@ function toggleDevoir() {
     ed.removeAttribute('disabled-editor');
     ed.contentEditable = 'true';
   }
+  sauvegarderPlanLocal();
 }
 
 function toggleRappel() {
@@ -1931,6 +1935,7 @@ function toggleRappel() {
     ed.removeAttribute('disabled-editor');
     ed.contentEditable = 'true';
   }
+  sauvegarderPlanLocal();
 }
 
 function getEmojis() {
@@ -2277,6 +2282,30 @@ function applySupplyDefaultsForCurrentUser(force = false) {
   if (teacherEl && (!teacherEl.value.trim() || force) && profile.teacher) teacherEl.value = profile.teacher;
   if (subjectEl && (!subjectEl.value.trim() || force) && profile.subject) subjectEl.value = profile.subject;
 }
+function getStoredGoogleSession() {
+  try {
+    return JSON.parse(localStorage.getItem(GOOGLE_SESSION_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+function persistGoogleSession() {
+  const existing = getStoredGoogleSession();
+  localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify({
+    connected: true,
+    email: googleUser?.email || existing.email || localStorage.getItem('g_user_hint') || '',
+    name: googleUser?.name || existing.name || '',
+    updatedAt: new Date().toISOString()
+  }));
+}
+function clearStoredGoogleSession() {
+  localStorage.removeItem(GOOGLE_SESSION_KEY);
+}
+function hasPersistentGoogleSessionIntent() {
+  const session = getStoredGoogleSession();
+  return !!(session.connected || localStorage.getItem('g_user_hint') || localStorage.getItem('g_access_token'));
+}
+
 function initGoogleTokenClient() {
   if (googleTokenClient || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) return;
   googleTokenClient = google.accounts.oauth2.initTokenClient({
@@ -2312,7 +2341,7 @@ async function trySilentGoogleRefresh() {
         requestGoogleToken('none'),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
       ]);
-      await afterGoogleLogin(false);
+      await afterGoogleLogin({ refreshUi: false, silent: true });
       return true;
     } catch (e) {
       return false;
@@ -2336,13 +2365,12 @@ function setGoogleConnecting(connecting) {
   }
 }
 async function googleConnect() {
-  if (googleUser?.email && googleAccessToken) { await googleDisconnect(); return; }
   if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === 'REMPLACER_PAR_VOTRE_CLIENT_ID') { setStatus('google-status', "Remplacez d'abord le CLIENT_ID Google dans index.html.", 'err'); return; }
   if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) { setStatus('google-status', "La librairie Google ne s'est pas chargée.", 'err'); return; }
   setGoogleConnecting(true);
   try {
-    await requestGoogleToken(googleAccessToken ? '' : 'consent select_account');
-    await afterGoogleLogin(true);
+    await requestGoogleToken('consent select_account');
+    await afterGoogleLogin({ refreshUi: true, silent: false });
   } catch (e) {
     setStatus('google-status', 'Erreur Google: ' + (e?.message || 'inconnue'), 'err');
   } finally {
@@ -2351,22 +2379,36 @@ async function googleConnect() {
 }
 async function googleDisconnect() {
   if (googleAccessToken && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(googleAccessToken, () => {});
-  googleAccessToken = ''; googleUser = null; classroomCourses = []; bankActivities = []; savedCourses = []; savedSupplyPlans = [];
+  googleAccessToken = '';
+  googleTokenExpiry = 0;
+  googleUser = null;
+  classroomCourses = [];
+  bankActivities = [];
+  savedCourses = [];
+  savedSupplyPlans = [];
   localStorage.removeItem('g_access_token');
   localStorage.removeItem('g_access_token_expiry');
   localStorage.removeItem('g_user_hint');
-  refreshGoogleUi(); renderBankList(); renderCourseOptions(); renderSupplyPlanOptions();
+  clearStoredGoogleSession();
+  refreshGoogleUi();
+  renderBankList();
+  renderCourseOptions();
+  renderSupplyPlanOptions();
   document.getElementById('classroom-course-select').innerHTML = '<option value="">Choisir un cours</option>';
   const shareSlot = document.getElementById('share-to-classroom-slot'); if (shareSlot) shareSlot.innerHTML = '';
-  setStatus('google-status', 'Déconnecté.', ''); setStatus('bank-status', '', ''); setStatus('classroom-status', '', '');
+  setStatus('google-status', 'Déconnecté.', '');
+  setStatus('bank-status', '', '');
+  setStatus('classroom-status', '', '');
   showToast('Déconnecté de Google', 'info');
   updateRoleBasedUi();
   applySupplyDefaultsForCurrentUser(true);
 }
-async function afterGoogleLogin(refreshUi = true) {
+async function afterGoogleLogin(options = {}) {
+  const { refreshUi = true, silent = false } = options;
   try {
     await loadGoogleProfile();
-    setStatus('google-status', 'Connexion réussie. Chargement...', 'ok');
+    persistGoogleSession();
+    setStatus('google-status', silent ? '' : 'Connexion réussie. Chargement...', silent ? '' : 'ok');
     await ensureOnlineStorage();
     await Promise.all([refreshBank(), refreshCourses(), refreshSupplyPlans(), loadClassroomCourses()]);
     await loadSupplyProfileFromSheet();
@@ -2374,31 +2416,54 @@ async function afterGoogleLogin(refreshUi = true) {
     updateRoleBasedUi();
     applySupplyDefaultsForCurrentUser(false);
     const displayName = googleUser?.name || googleUser?.email || 'Google';
-    showToast(`Connecté en tant que ${displayName}`, 'ok');
+    if (!silent) showToast(`Connecté en tant que ${displayName}`, 'ok');
     setStatus('google-status', '', '');
   } catch (e) {
     googleUser = null;
-    setStatus('google-status', 'Connexion requise pour la banque en ligne et Classroom.', '');
     if (refreshUi) refreshGoogleUi();
     throw e;
   }
 }
-async function loadGoogleProfile() { googleUser = await apiFetch('https://openidconnect.googleapis.com/v1/userinfo'); if (googleUser?.email) localStorage.setItem('g_user_hint', googleUser.email); }
+async function loadGoogleProfile() {
+  googleUser = await apiFetch('https://openidconnect.googleapis.com/v1/userinfo');
+  if (googleUser?.email) localStorage.setItem('g_user_hint', googleUser.email);
+}
 function refreshGoogleUi() {
   const pill = document.getElementById('google-user-pill');
   const btnIn = document.getElementById('btn-google-connect');
   const btnOut = document.getElementById('btn-google-disconnect');
-  if (btnOut) btnOut.style.display = 'none';
-  if (googleUser?.email) {
-    pill.style.display = '';
-    pill.textContent = googleUser.name ? (googleUser.name + ' - ' + googleUser.email) : googleUser.email;
-    if (btnIn) { btnIn.textContent = 'Se déconnecter de Google'; btnIn.classList.add('connected'); }
-  } else {
-    pill.style.display = 'none';
-    if (btnIn) { btnIn.textContent = 'Se connecter avec Google'; btnIn.classList.remove('connected'); }
+  const isConnected = !!googleUser?.email;
+
+  if (pill) {
+    if (isConnected) {
+      pill.style.display = '';
+      pill.textContent = googleUser.name ? (googleUser.name + ' - ' + googleUser.email) : googleUser.email;
+    } else {
+      pill.style.display = 'none';
+      pill.textContent = '';
+    }
   }
+
+  if (btnIn) {
+    btnIn.style.display = isConnected ? 'none' : '';
+    btnIn.textContent = 'Se connecter avec Google';
+    btnIn.classList.toggle('connected', false);
+  }
+  if (btnOut) btnOut.style.display = isConnected ? '' : 'none';
+
   const sheetPill = document.getElementById('sheet-pill');
-  if (appSpreadsheetId) { if (sheetPill) { sheetPill.style.display = ''; sheetPill.textContent = 'Sheet connecté'; } } else { if (sheetPill) sheetPill.style.display = 'none'; }
+  if (appSpreadsheetId) {
+    if (sheetPill) {
+      sheetPill.style.display = '';
+      sheetPill.textContent = 'Sheet connecté';
+    }
+  } else if (sheetPill) {
+    sheetPill.style.display = 'none';
+  }
+
+  if (!isConnected && !document.getElementById('google-status')?.textContent?.trim()) {
+    setStatus('google-status', 'Connexion requise pour la banque en ligne et Classroom.', '');
+  }
 }
 async function refreshSheetMetadata(force = false) {
   if (!googleAccessToken || !appSpreadsheetId) return;
@@ -2555,6 +2620,17 @@ function fillFormFromCourseState(state) {
   syncSupplyFromCourse(true);
 }
 
+function parseSortTimestamp(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 0;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+function getCourseSortTimestamp(course) {
+  return parseSortTimestamp(course?.updatedAt) || parseSortTimestamp(course?.dateISO) || Number(course?.rowNumber || 0);
+}
+
 async function refreshCourses() {
   const select = document.getElementById('reuse-course-select');
   if (!select) return;
@@ -2580,7 +2656,11 @@ async function refreshCourses() {
     updatedAt: r[12] || '',
     rowNumber: idx + 2
   })).filter(c => c.id && c.title);
-  savedCourses.sort((a,b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  savedCourses.sort((a, b) => {
+    const diff = getCourseSortTimestamp(b) - getCourseSortTimestamp(a);
+    if (diff !== 0) return diff;
+    return (b.rowNumber || 0) - (a.rowNumber || 0);
+  });
   renderCourseOptions();
 }
 
@@ -3119,18 +3199,36 @@ async function publishToClassroom() {
 
 function getPlanStateForLocal() {
   return {
+    version: 3,
     activities: [...document.querySelectorAll('.activity-row .rich-editor')].map(ed => ed.innerHTML),
     devoirHtml: document.getElementById('devoir').innerHTML,
     pasDevoir: document.getElementById('pas-devoir').checked,
     rappelHtml: document.getElementById('rappel').innerHTML,
-    pasRappel: document.getElementById('pas-rappel').checked
+    pasRappel: document.getElementById('pas-rappel').checked,
+    dateDisplay: document.getElementById('date-cours')?.value?.trim() || '',
+    dateISO: dpDate ? dpDate.toISOString() : '',
+    courseNumber: document.getElementById('num-cours')?.value?.trim() || '',
+    sansNumero: !!document.getElementById('sans-numero')?.checked,
+    avecEmojis: !!document.getElementById('avec-emojis')?.checked,
+    reuseCourseEnabled: !!document.getElementById('enable-reuse-course')?.checked,
+    currentPlanMode,
+    schoolKey: getCurrentSchoolKey(),
+    supplyDateISO: sdpDate ? sdpDate.toISOString() : '',
+    supplyState: getSupplyState()
   };
 }
 
 let _saveDebounceTimer = null;
 let _saveIndicatorTimer = null;
+function shouldPersistLocalPlan() {
+  const cb = document.getElementById('keep-form-filled');
+  if (cb) return !!cb.checked;
+  const pref = localStorage.getItem(KEEP_FORM_PREF_KEY);
+  return pref === null ? true : pref === '1';
+}
 function sauvegarderPlanLocal() {
   clearTimeout(_saveDebounceTimer);
+  if (!shouldPersistLocalPlan()) return;
   _saveDebounceTimer = setTimeout(() => {
     try {
       localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify(getPlanStateForLocal()));
@@ -3155,6 +3253,20 @@ function restaurerPlanLocal() {
     const state = JSON.parse(raw);
     if (!state) return;
 
+    if (state.schoolKey) applySchoolSelection(state.schoolKey);
+
+    if (state.dateISO) {
+      const parsedDate = new Date(state.dateISO);
+      if (!isNaN(parsedDate)) dpDate = parsedDate;
+    }
+    if (state.dateDisplay) document.getElementById('date-cours').value = state.dateDisplay;
+    else document.getElementById('date-cours').value = formatDateStr(dpDate);
+
+    document.getElementById('num-cours').value = state.courseNumber || '';
+    document.getElementById('sans-numero').checked = !!state.sansNumero;
+    document.getElementById('avec-emojis').checked = state.avecEmojis !== false;
+    document.getElementById('enable-reuse-course').checked = !!state.reuseCourseEnabled;
+
     document.querySelectorAll('.activity-row').forEach(r => r.remove());
     const activities = Array.isArray(state.activities) && state.activities.length ? state.activities : [''];
     activities.forEach(html => ajouterActivite(html || ''));
@@ -3164,8 +3276,28 @@ function restaurerPlanLocal() {
     document.getElementById('rappel').innerHTML = state.rappelHtml || '';
     document.getElementById('pas-rappel').checked = !!state.pasRappel;
 
+    if (state.supplyDateISO) {
+      const parsedSupplyDate = new Date(state.supplyDateISO);
+      if (!isNaN(parsedSupplyDate)) sdpDate = parsedSupplyDate;
+    }
+    if (state.supplyState && typeof state.supplyState === 'object') {
+      Object.entries(state.supplyState).forEach(([key, val]) => {
+        const el = document.getElementById(key);
+        if (!el) return;
+        if (key === 'supply-work') el.innerHTML = val || '';
+        else el.value = val || '';
+      });
+    }
+    if (document.getElementById('supply-date')) {
+      document.getElementById('supply-date').value = state.supplyState?.['supply-date'] || formatDateStr(sdpDate);
+    }
+
+    toggleSansNumero();
+    toggleReuseCourse();
     toggleDevoir();
     toggleRappel();
+    syncSupplyFromCourse(true);
+    setPlanMode(state.currentPlanMode === 'supply' ? 'supply' : 'course');
   } catch (e) {
     console.warn('restaurerPlanLocal', e);
   }
@@ -3175,10 +3307,12 @@ function toggleKeepFormFilled() {
   const cb = document.getElementById('keep-form-filled');
   const enabled = cb && cb.checked;
   localStorage.setItem(KEEP_FORM_PREF_KEY, enabled ? '1' : '0');
-  if (!enabled) effacerPlanLocal();
+  if (enabled) sauvegarderPlanLocal();
+  else effacerPlanLocal();
 }
 
 function effacerPlanLocal() {
+  clearTimeout(_saveDebounceTimer);
   localStorage.removeItem(LOCAL_PLAN_KEY);
 }
 
@@ -3252,9 +3386,9 @@ function getSupplyState() {
   out['supply-work'] = document.getElementById('supply-work')?.innerHTML || '';
   return out;
 }
-function sauvegarderSupplyLocal() {}
-function restaurerSupplyLocal() {}
-function clearSupplyLocal() {}
+function sauvegarderSupplyLocal() { sauvegarderPlanLocal(); }
+function restaurerSupplyLocal() { restaurerPlanLocal(); }
+function clearSupplyLocal() { effacerPlanLocal(); }
 function supplyLinesHtml(count, filledLines) {
   const lines = [];
   const src = (filledLines || []).map(v => escapeHtml(v));
@@ -3729,8 +3863,11 @@ document.getElementById('devoir').addEventListener('input', () => { sauvegarderP
 document.getElementById('rappel').addEventListener('input', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
 document.getElementById('pas-devoir').addEventListener('change', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
 document.getElementById('pas-rappel').addEventListener('change', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
-document.getElementById('num-cours').addEventListener('input', () => { syncSupplyFromCourse(true); });
-document.getElementById('date-cours').addEventListener('change', () => { syncSupplyFromCourse(true); });
+document.getElementById('num-cours').addEventListener('input', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
+document.getElementById('date-cours').addEventListener('change', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
+document.getElementById('sans-numero').addEventListener('change', () => { sauvegarderPlanLocal(); syncSupplyFromCourse(true); });
+document.getElementById('avec-emojis').addEventListener('change', () => { sauvegarderPlanLocal(); });
+document.getElementById('enable-reuse-course').addEventListener('change', () => { sauvegarderPlanLocal(); });
 document.getElementById('activities-list').addEventListener('input', (e) => { if (e.target.classList.contains('rich-editor')) { sauvegarderPlanLocal(); syncSupplyFromCourse(true); } });
 const supplyPanelHost = document.getElementById('left-plan-supply');
 const originalSupplyPanel = document.querySelector('#right-tab-supply .google-card');
@@ -3742,14 +3879,14 @@ if (reuseSupplySelectEl) reuseSupplySelectEl.addEventListener('change', (e) => {
 
 ['supply-teacher','supply-subject'].forEach(id => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener('change', saveSupplyProfileForCurrentUser);
+  if (el) el.addEventListener('change', () => { saveSupplyProfileForCurrentUser(); sauvegarderPlanLocal(); });
 });
 ['supply-rules','supply-note','supply-return','supply-room','supply-level','supply-group','supply-period','supply-replacement','supply-date'].forEach(id => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener('input', () => {});
+  if (el) el.addEventListener('input', () => { sauvegarderPlanLocal(); });
 });
 const supplyWorkEl = document.getElementById('supply-work');
-if (supplyWorkEl) supplyWorkEl.addEventListener('input', () => { supplyWorkEl.dataset.synced = '0'; });
+if (supplyWorkEl) supplyWorkEl.addEventListener('input', () => { supplyWorkEl.dataset.synced = '0'; sauvegarderPlanLocal(); });
 function waitForGoogle(maxMs = 8000) {
   return new Promise(resolve => {
     if (typeof google !== 'undefined' && google?.accounts?.oauth2) { resolve(true); return; }
@@ -3764,14 +3901,16 @@ const maybeConnectSilently = async () => {
   const loaded = await waitForGoogle(8000);
   if (!loaded) return;
 
-  // ── Cas 1 : token encore valide → connexion immédiate, sans aucune popup ──
+  const hasSessionIntent = hasPersistentGoogleSessionIntent();
+  if (!hasSessionIntent && !(googleAccessToken && googleTokenExpiry)) return;
+
   if (googleAccessToken && googleTokenExpiry && Date.now() < googleTokenExpiry) {
     setGoogleConnecting(true);
     try {
-      await afterGoogleLogin(true);
+      await afterGoogleLogin({ refreshUi: true, silent: true });
     } catch (err) {
-      // Token révoqué ou invalide — on nettoie le stockage
       googleAccessToken = '';
+      googleTokenExpiry = 0;
       localStorage.removeItem('g_access_token');
       localStorage.removeItem('g_access_token_expiry');
       refreshGoogleUi();
@@ -3781,25 +3920,32 @@ const maybeConnectSilently = async () => {
     return;
   }
 
-  // ── Cas 2 : token expiré mais l'utilisateur était connecté ──
-  // Tentative de refresh silencieux immédiat (prompt:none ne nécessite pas d'interaction utilisateur)
-  const hadSession = !!(localStorage.getItem('g_access_token') || localStorage.getItem('g_user_hint'));
-  if (hadSession) {
-    setStatus('google-status', 'Reconnexion en cours…', '');
-    setGoogleConnecting(true);
-    try {
-      const ok = await trySilentGoogleRefresh();
-      if (!ok) {
-        setStatus('google-status', 'Session expirée — cliquez sur « Se connecter avec Google » pour reprendre.', '');
-        refreshGoogleUi();
-      }
-    } finally {
-      setGoogleConnecting(false);
+  setStatus('google-status', 'Reconnexion en cours…', '');
+  setGoogleConnecting(true);
+  try {
+    const ok = await trySilentGoogleRefresh();
+    if (!ok) {
+      googleAccessToken = '';
+      googleTokenExpiry = 0;
+      localStorage.removeItem('g_access_token');
+      localStorage.removeItem('g_access_token_expiry');
+      googleUser = null;
+      setStatus('google-status', 'Session expirée ou cookies supprimés - cliquez sur « Se connecter avec Google » pour reprendre.', '');
+      refreshGoogleUi();
     }
+  } finally {
+    setGoogleConnecting(false);
   }
 };
 // Reconnexion silencieuse automatique au chargement
 maybeConnectSilently();
+window.addEventListener('beforeunload', () => {
+  try {
+    if (shouldPersistLocalPlan()) localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify(getPlanStateForLocal()));
+  } catch (e) {
+    console.warn('beforeunload save', e);
+  }
+});
 function openChangelog() {
   document.getElementById('changelog-overlay').classList.add('open');
 }
