@@ -1496,6 +1496,8 @@ const SUPPLY_PROFILE_PREFIX = 'cardinal_supply_profile_v1_';
 let currentPlanMode = 'course';
 let googleTokenExpiry = parseInt(localStorage.getItem('g_access_token_expiry') || '0', 10) || 0;
 let googleTokenClient = null;
+let googleIdClientInitialized = false;
+let googleIdPromptTriggered = false;
 let googleAccessToken = localStorage.getItem('g_access_token') || '';
 let googleUser = null;
 let appSpreadsheetId = localStorage.getItem('plan_cours_sheet_id') || '';
@@ -1615,9 +1617,13 @@ function formatDateStr(d) {
   return `${d.getDate()} ${MOIS_NOMS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function initDate() {
+function setCourseDateToToday() {
   dpDate = new Date();
   document.getElementById('date-cours').value = formatDateStr(dpDate);
+}
+
+function initDate() {
+  setCourseDateToToday();
 }
 
 function shiftDay(delta) {
@@ -2305,6 +2311,51 @@ function hasPersistentGoogleSessionIntent() {
   const session = getStoredGoogleSession();
   return !!(session.connected || localStorage.getItem('g_user_hint') || localStorage.getItem('g_access_token'));
 }
+function decodeJwtPayload(token) {
+  try {
+    const base64Url = String(token || '').split('.')[1] || '';
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+function initGoogleIdentityClient() {
+  if (googleIdClientInitialized || typeof google === 'undefined' || !google?.accounts?.id) return;
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    auto_select: true,
+    use_fedcm_for_prompt: true,
+    callback: async (response) => {
+      const payload = decodeJwtPayload(response?.credential || '');
+      if (!payload?.email) return;
+      localStorage.setItem('g_user_hint', payload.email);
+      googleUser = googleUser?.email ? googleUser : {
+        email: payload.email,
+        name: payload.name || payload.given_name || '',
+        picture: payload.picture || ''
+      };
+      persistGoogleSession();
+      refreshGoogleUi();
+      if (!googleAccessToken || !googleTokenExpiry || Date.now() >= googleTokenExpiry) {
+        try {
+          const ok = await trySilentGoogleRefresh(payload.email);
+          if (!ok) setStatus('google-status', 'Session Google détectée, mais l’autorisation aux API n’a pas pu être restaurée automatiquement.', '');
+        } catch {}
+      }
+    }
+  });
+  googleIdClientInitialized = true;
+}
+function triggerGoogleIdPromptIfNeeded() {
+  if (googleIdPromptTriggered || !hasPersistentGoogleSessionIntent()) return;
+  if (typeof google === 'undefined' || !google?.accounts?.id) return;
+  googleIdPromptTriggered = true;
+  try {
+    google.accounts.id.prompt();
+  } catch {}
+}
 
 function initGoogleTokenClient() {
   if (googleTokenClient || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) return;
@@ -2314,7 +2365,7 @@ function initGoogleTokenClient() {
     callback: () => {}
   });
 }
-function requestGoogleToken(promptValue) {
+function requestGoogleToken(promptValue, extraParams = {}) {
   return new Promise((resolve, reject) => {
     initGoogleTokenClient();
     if (!googleTokenClient) { reject(new Error('Google indisponible')); return; }
@@ -2326,25 +2377,37 @@ function requestGoogleToken(promptValue) {
       localStorage.setItem('g_access_token_expiry', String(googleTokenExpiry));
       resolve(response);
     };
-    const _tokenParams = { prompt: promptValue };
-    const _hint = localStorage.getItem('g_user_hint');
+    const _tokenParams = { ...extraParams };
+    if (typeof promptValue === 'string') _tokenParams.prompt = promptValue;
+    const _hint = _tokenParams.login_hint || localStorage.getItem('g_user_hint');
     if (_hint) _tokenParams.login_hint = _hint;
     googleTokenClient.requestAccessToken(_tokenParams);
   });
 }
 let _silentRefreshPromise = null;
-async function trySilentGoogleRefresh() {
+async function trySilentGoogleRefresh(loginHint = '') {
   if (_silentRefreshPromise) return _silentRefreshPromise;
   _silentRefreshPromise = (async () => {
+    const extra = {};
+    if (loginHint) extra.login_hint = loginHint;
     try {
       await Promise.race([
-        requestGoogleToken('none'),
+        requestGoogleToken('', extra),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
       ]);
       await afterGoogleLogin({ refreshUi: false, silent: true });
       return true;
-    } catch (e) {
-      return false;
+    } catch (e1) {
+      try {
+        await Promise.race([
+          requestGoogleToken('none', extra),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        ]);
+        await afterGoogleLogin({ refreshUi: false, silent: true });
+        return true;
+      } catch (e2) {
+        return false;
+      }
     } finally {
       _silentRefreshPromise = null;
     }
@@ -2379,6 +2442,11 @@ async function googleConnect() {
 }
 async function googleDisconnect() {
   if (googleAccessToken && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(googleAccessToken, () => {});
+  if (window.google?.accounts?.id) {
+    try { google.accounts.id.disableAutoSelect(); } catch {}
+    try { google.accounts.id.cancel(); } catch {}
+  }
+  googleIdPromptTriggered = false;
   googleAccessToken = '';
   googleTokenExpiry = 0;
   googleUser = null;
@@ -2595,11 +2663,7 @@ function getCurrentCourseState() {
 }
 
 function fillFormFromCourseState(state) {
-  if (state.dateISO) {
-    const parsed = new Date(state.dateISO);
-    if (!isNaN(parsed)) dpDate = parsed;
-  }
-  if (state.dateDisplay) document.getElementById('date-cours').value = state.dateDisplay;
+  setCourseDateToToday();
   document.getElementById('num-cours').value = state.courseNumber || '';
   document.getElementById('sans-numero').checked = !!state.sansNumero;
   document.getElementById('avec-emojis').checked = state.avecEmojis !== false;
@@ -3255,12 +3319,7 @@ function restaurerPlanLocal() {
 
     if (state.schoolKey) applySchoolSelection(state.schoolKey);
 
-    if (state.dateISO) {
-      const parsedDate = new Date(state.dateISO);
-      if (!isNaN(parsedDate)) dpDate = parsedDate;
-    }
-    if (state.dateDisplay) document.getElementById('date-cours').value = state.dateDisplay;
-    else document.getElementById('date-cours').value = formatDateStr(dpDate);
+    setCourseDateToToday();
 
     document.getElementById('num-cours').value = state.courseNumber || '';
     document.getElementById('sans-numero').checked = !!state.sansNumero;
@@ -3901,8 +3960,19 @@ const maybeConnectSilently = async () => {
   const loaded = await waitForGoogle(8000);
   if (!loaded) return;
 
+  initGoogleIdentityClient();
+
   const hasSessionIntent = hasPersistentGoogleSessionIntent();
+  const storedSession = getStoredGoogleSession();
   if (!hasSessionIntent && !(googleAccessToken && googleTokenExpiry)) return;
+
+  if (!googleUser && storedSession.connected && storedSession.email) {
+    googleUser = { email: storedSession.email, name: storedSession.name || '' };
+    refreshGoogleUi();
+    setStatus('google-status', 'Restauration de la session Google…', '');
+  }
+
+  triggerGoogleIdPromptIfNeeded();
 
   if (googleAccessToken && googleTokenExpiry && Date.now() < googleTokenExpiry) {
     setGoogleConnecting(true);
@@ -3923,7 +3993,7 @@ const maybeConnectSilently = async () => {
   setStatus('google-status', 'Reconnexion en cours…', '');
   setGoogleConnecting(true);
   try {
-    const ok = await trySilentGoogleRefresh();
+    const ok = await trySilentGoogleRefresh(storedSession.email || localStorage.getItem('g_user_hint') || '');
     if (!ok) {
       googleAccessToken = '';
       googleTokenExpiry = 0;
