@@ -2027,8 +2027,9 @@ async function generer() {
   activites.forEach((a, idx) => {
     const lines = richToLines(a.html);
     lines.forEach((line, li) => {
-      if (li === 0) previewHTML += `<p>${NUMERO_EMOJIS[idx]} ${line}</p>`;
-      else previewHTML += `<p style="margin-left:1.8em">${line}</p>`;
+      const inlineLine = sanitizeInlineFragment(line);
+      if (li === 0) previewHTML += `<p>${NUMERO_EMOJIS[idx]}&nbsp;${inlineLine}</p>`;
+      else previewHTML += `<p style="margin-left:1.8em">${inlineLine}</p>`;
     });
   });
 
@@ -2037,20 +2038,20 @@ async function generer() {
   } else if (devoirText) {
     const lines = richToLines(devoirHTML);
     if (lines.length <= 1) {
-      previewHTML += `<p class="special"><b>Devoir(s) :</b> ${lines[0] || ''}</p>`;
+      previewHTML += `<p class="special"><b>Devoir(s) :</b> ${sanitizeInlineFragment(lines[0] || '')}</p>`;
     } else {
       previewHTML += `<p class="special"><b>Devoir(s) :</b></p>`;
-      for (let i = 0; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
+      for (let i = 0; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${sanitizeInlineFragment(lines[i])}</p>`;
     }
   }
 
   if (!pasRappel && rappelText) {
     const lines = richToLines(rappelHTML);
     if (lines.length <= 1) {
-      previewHTML += `<p class="special"><b>Rappel(s) :</b> ${lines[0] || ''}</p>`;
+      previewHTML += `<p class="special"><b>Rappel(s) :</b> ${sanitizeInlineFragment(lines[0] || '')}</p>`;
     } else {
       previewHTML += `<p class="special"><b>Rappel(s) :</b></p>`;
-      for (let i = 0; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${lines[i]}</p>`;
+      for (let i = 0; i < lines.length; i++) previewHTML += `<p style="margin-left:1.8em">${sanitizeInlineFragment(lines[i])}</p>`;
     }
   }
 
@@ -2105,6 +2106,29 @@ function richToLines(html) {
   // Split, trim, and drop empty lines
   const lines = normalized.split('\n').map(l => l.trim()).filter(l => l.replace(/<[^>]*>/g,'').trim().length > 0);
   return lines.length > 0 ? lines : [''];
+}
+function sanitizeInlineFragment(html) {
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html || '';
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) return esc(node.nodeValue || '');
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') return '<br>';
+    let inner = '';
+    node.childNodes.forEach(child => { inner += walk(child); });
+    if (tag === 'b' || tag === 'strong') return `<b>${inner}</b>`;
+    if (tag === 'i' || tag === 'em') return `<i>${inner}</i>`;
+    if (tag === 'u') return `<u>${inner}</u>`;
+    if (tag === 's' || tag === 'strike') return `<s>${inner}</s>`;
+    if (tag === 'span' || tag === 'font' || tag === 'mark' || tag === 'small' || tag === 'sub' || tag === 'sup') return inner;
+    if (tag === 'a') {
+      const href = node.getAttribute('href') || '';
+      return href ? `<a href="${esc(href)}">${inner}</a>` : inner;
+    }
+    return inner;
+  }
+  return Array.from(wrapper.childNodes).map(walk).join('').replace(/(?:<br>\s*){2,}/g, '<br>').trim();
 }
 
 // ── Format toolbar ──
@@ -2322,39 +2346,12 @@ function decodeJwtPayload(token) {
   }
 }
 function initGoogleIdentityClient() {
-  if (googleIdClientInitialized || typeof google === 'undefined' || !google?.accounts?.id) return;
-  google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    auto_select: true,
-    use_fedcm_for_prompt: true,
-    callback: async (response) => {
-      const payload = decodeJwtPayload(response?.credential || '');
-      if (!payload?.email) return;
-      localStorage.setItem('g_user_hint', payload.email);
-      googleUser = googleUser?.email ? googleUser : {
-        email: payload.email,
-        name: payload.name || payload.given_name || '',
-        picture: payload.picture || ''
-      };
-      persistGoogleSession();
-      refreshGoogleUi();
-      if (!googleAccessToken || !googleTokenExpiry || Date.now() >= googleTokenExpiry) {
-        try {
-          const ok = await trySilentGoogleRefresh(payload.email);
-          if (!ok) setStatus('google-status', 'Session Google détectée, mais l’autorisation aux API n’a pas pu être restaurée automatiquement.', '');
-        } catch {}
-      }
-    }
-  });
+  // One Tap volontairement désactivé ici.
+  // Cette page doit rester discrète au rechargement et ne pas afficher d'overlay Google au-dessus de l'interface.
   googleIdClientInitialized = true;
 }
 function triggerGoogleIdPromptIfNeeded() {
-  if (googleIdPromptTriggered || !hasPersistentGoogleSessionIntent()) return;
-  if (typeof google === 'undefined' || !google?.accounts?.id) return;
-  googleIdPromptTriggered = true;
-  try {
-    google.accounts.id.prompt();
-  } catch {}
+  // Désactivé volontairement pour éviter l'apparition du panneau "Se connecter avec Google" au chargement.
 }
 
 function initGoogleTokenClient() {
@@ -2392,22 +2389,13 @@ async function trySilentGoogleRefresh(loginHint = '') {
     if (loginHint) extra.login_hint = loginHint;
     try {
       await Promise.race([
-        requestGoogleToken('', extra),
+        requestGoogleToken('none', extra),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
       ]);
       await afterGoogleLogin({ refreshUi: false, silent: true });
       return true;
-    } catch (e1) {
-      try {
-        await Promise.race([
-          requestGoogleToken('none', extra),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
-        ]);
-        await afterGoogleLogin({ refreshUi: false, silent: true });
-        return true;
-      } catch (e2) {
-        return false;
-      }
+    } catch (e) {
+      return false;
     } finally {
       _silentRefreshPromise = null;
     }
@@ -3966,14 +3954,6 @@ const maybeConnectSilently = async () => {
   const storedSession = getStoredGoogleSession();
   if (!hasSessionIntent && !(googleAccessToken && googleTokenExpiry)) return;
 
-  if (!googleUser && storedSession.connected && storedSession.email) {
-    googleUser = { email: storedSession.email, name: storedSession.name || '' };
-    refreshGoogleUi();
-    setStatus('google-status', 'Restauration de la session Google…', '');
-  }
-
-  triggerGoogleIdPromptIfNeeded();
-
   if (googleAccessToken && googleTokenExpiry && Date.now() < googleTokenExpiry) {
     setGoogleConnecting(true);
     try {
@@ -3990,7 +3970,6 @@ const maybeConnectSilently = async () => {
     return;
   }
 
-  setStatus('google-status', 'Reconnexion en cours…', '');
   setGoogleConnecting(true);
   try {
     const ok = await trySilentGoogleRefresh(storedSession.email || localStorage.getItem('g_user_hint') || '');
@@ -4000,7 +3979,6 @@ const maybeConnectSilently = async () => {
       localStorage.removeItem('g_access_token');
       localStorage.removeItem('g_access_token_expiry');
       googleUser = null;
-      setStatus('google-status', 'Session expirée ou cookies supprimés - cliquez sur « Se connecter avec Google » pour reprendre.', '');
       refreshGoogleUi();
     }
   } finally {
